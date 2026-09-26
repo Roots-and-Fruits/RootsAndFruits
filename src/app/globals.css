@@ -1,0 +1,173 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@theme inline {
+  --font-sans:
+    "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  --font-heading: var(--font-sans);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--primary);
+  --color-muted: var(--secondary);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--primary);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--primary);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: #f8f7f2;
+  --foreground: #25382e;
+  --card: #fffefb;
+  --primary: #234b38;
+  --primary-foreground: #fbfaf3;
+  --secondary: #eaf0e4;
+  --muted-foreground: #697568;
+  --accent: #d8e798;
+  --border: #e0e4d8;
+  --destructive: #b43e36;
+  --radius: 0.75rem;
+  --fruit: #ecb960;
+  --fruit-light: #f1ce80;
+  --leaf: #91ad79;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+  a,
+  button,
+  input {
+    -webkit-tap-highlight-color: transparent;
+  }
+  ::selection {
+    background: var(--accent);
+    color: var(--foreground);
+  }
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--muted-foreground);
+}
+
+/* Reserve the measured action bar height, including its safe-area padding. */
+.order-page {
+  padding-bottom: calc(var(--order-action-height, 0px) + 1rem);
+}
+/* A best-effort gesture guard; draft restoration also covers manual refresh. */
+html:has(.order-page),
+body:has(.order-page) {
+  overscroll-behavior-y: none;
+}
+html:has([data-order-actions]) {
+  scroll-padding-bottom: calc(var(--order-action-height, 0px) + 1rem);
+}
+.orchard-art {
+  position: absolute;
+  width: 350px;
+  height: 300px;
+  right: 30px;
+  bottom: 15px;
+}
+.orchard-ring {
+  position: absolute;
+  inset: 0;
+  border: 1px solid #ffffff16;
+  border-radius: 50%;
+  transform: rotate(-30deg) scaleY(0.8);
+}
+.orchard-fruit {
+  position: absolute;
+  width: 145px;
+  height: 155px;
+  border-radius: 48% 48% 46% 48%;
+  background: var(--fruit);
+}
+.fruit-one {
+  bottom: 40px;
+  left: 25px;
+  transform: rotate(-16deg);
+}
+.fruit-two {
+  bottom: 72px;
+  right: 25px;
+  width: 150px;
+  height: 162px;
+  background: var(--fruit-light);
+  transform: rotate(14deg);
+}
+.orchard-leaf {
+  position: absolute;
+  width: 108px;
+  height: 50px;
+  border-radius: 100% 0 100% 0;
+  background: var(--leaf);
+}
+.leaf-one {
+  top: 58px;
+  left: 69px;
+  transform: rotate(28deg);
+}
+.leaf-two {
+  top: 15px;
+  right: 42px;
+  transform: rotate(-30deg);
+}
+.orchard-art span {
+  position: absolute;
+  bottom: 7px;
+  right: 70px;
+  color: #ffffff70;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+}
+@media (max-width: 900px) {
+  .orchard-art {
+    right: -55px;
+    opacity: 0.24;
+    transform: scale(0.9);
+  }
+}
+@media (max-width: 600px) {
+  .orchard-art {
+    right: -120px;
+    bottom: -60px;
+    opacity: 0.15;
+    transform: scale(0.85);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

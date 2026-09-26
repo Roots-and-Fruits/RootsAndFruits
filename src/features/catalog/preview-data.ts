@@ -1,0 +1,66 @@
+import type { Product } from "./types";
+
+// Fictional design fixtures. Only imported by the explicitly enabled preview route.
+// Never seed production prices or inventory with this data.
+export const previewProducts: Product[] = [
+  {
+    id: "preview-citrus-3",
+    category: "product",
+    fruitType: "감귤",
+    weightGrams: 3000,
+    description: "선물용 · 대과",
+    price: 30000,
+    inventoryEnabled: false,
+    stockQuantity: null,
+  },
+  {
+    id: "preview-citrus-5",
+    category: "product",
+    fruitType: "감귤",
+    weightGrams: 5000,
+    description: "가정용 · 소과",
+    price: 40000,
+    inventoryEnabled: false,
+    stockQuantity: null,
+  },
+  {
+    id: "preview-hallabong-3",
+    category: "product",
+    fruitType: "한라봉",
+    weightGrams: 3000,
+    description: "선물용",
+    price: 45000,
+    inventoryEnabled: true,
+    stockQuantity: 5,
+  },
+  {
+    id: "preview-hallabong-5",
+    category: "product",
+    fruitType: "한라봉",
+    weightGrams: 5000,
+    description: "가정용",
+    price: 60000,
+    inventoryEnabled: true,
+    stockQuantity: 0,
+  },
+  {
+    id: "preview-experience-3",
+    category: "experience",
+    fruitType: "체험 감귤",
+    weightGrams: 3000,
+    description: "체험 과일 택배",
+    price: 10000,
+    inventoryEnabled: false,
+    stockQuantity: null,
+  },
+  {
+    id: "preview-experience-5",
+    category: "experience",
+    fruitType: "체험 감귤",
+    weightGrams: 5000,
+    description: "체험 과일 택배",
+    price: 15000,
+    inventoryEnabled: false,
+    stockQuantity: null,
+  },
+];
