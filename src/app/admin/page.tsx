@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-export default function AdminPage() {
-  // No admin data or bypass before authentication/authorization is implemented.
-  redirect("/admin/login");
+import { getStaff } from "@/features/admin/auth";
+export const dynamic = "force-dynamic";
+export default async function AdminPage() {
+  redirect((await getStaff()) ? "/admin/counter" : "/admin/login");
 }
