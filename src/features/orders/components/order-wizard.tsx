@@ -28,6 +28,8 @@ import { AddressStep } from "./address-step";
 import { ProductStep } from "./product-step";
 import { DeliveryDateStep } from "./delivery-date-step";
 import { OrderEdit } from "./order-edit";
+import { getPendingSubmission } from "../submission-storage";
+import { SubmitOrder } from "./submit-order";
 import { OrderReview } from "./order-review";
 
 import {
@@ -35,6 +37,15 @@ import {
   draftStorageKey,
   type OrderDraft,
 } from "../draft-storage";
+
+function subscribeSubmission(listener: () => void) {
+  window.addEventListener("storage", listener);
+  window.addEventListener("order-submission", listener);
+  return () => {
+    window.removeEventListener("storage", listener);
+    window.removeEventListener("order-submission", listener);
+  };
+}
 
 type Step = OrderDraft["step"];
 const headings: Record<Step, { title: string; description: string }> = {
@@ -75,12 +86,14 @@ export function OrderWizard({
   today,
   maxDeliveryDays,
   preview = false,
+  bundleDiscount = 0,
 }: {
   category: CatalogCategory;
   products: Product[];
   today: string;
   maxDeliveryDays: number;
   preview?: boolean;
+  bundleDiscount?: number;
 }) {
   const [store] = useState(() =>
     createDraftStore(draftStorageKey(category, preview)),
@@ -90,6 +103,34 @@ export function OrderWizard({
     store.getSnapshot,
     store.getServerSnapshot,
   );
+  const pendingSubmission = useSyncExternalStore(
+    subscribeSubmission,
+    () => {
+      if (preview) return null;
+      try {
+        return getPendingSubmission(category);
+      } catch {
+        return null;
+      }
+    },
+    () => null,
+  );
+  if (snapshot && pendingSubmission)
+    return (
+      <section className="mx-auto max-w-xl space-y-6 px-5 py-12">
+        <h1 className="text-2xl font-semibold">접수 결과를 확인해주세요.</h1>
+        <p>
+          이전에 보낸 주문의 결과를 아직 확인하지 못했어요. 같은 요청을 다시
+          확인하므로 주문이 중복 접수되지 않아요. 확인이 끝날 때까지 새 주문을
+          시작할 수 없어요.
+        </p>
+        <SubmitOrder
+          category={category}
+          sender={snapshot.draft.sender}
+          deliveries={snapshot.draft.deliveries}
+        />
+      </section>
+    );
   if (!snapshot)
     return (
       <p className="px-5 py-8 text-sm text-muted-foreground" role="status">
@@ -152,6 +193,7 @@ export function OrderWizard({
         products,
         today,
         maxDeliveryDays,
+        bundleDiscount,
         preview,
         store,
         snapshot,
@@ -166,6 +208,7 @@ function OrderWizardContent({
   today,
   maxDeliveryDays,
   preview,
+  bundleDiscount,
   store,
   snapshot,
 }: {
@@ -174,6 +217,7 @@ function OrderWizardContent({
   today: string;
   maxDeliveryDays: number;
   preview: boolean;
+  bundleDiscount: number;
   store: ReturnType<typeof createDraftStore>;
   snapshot: NonNullable<
     ReturnType<ReturnType<typeof createDraftStore>["getSnapshot"]>
@@ -355,7 +399,7 @@ function OrderWizardContent({
             </p>
             <p className="mt-4 text-xs text-muted-foreground">현재 선택 금액</p>
             <p className="mt-1 text-xl font-semibold text-primary tabular-nums">
-              {formatWon(calculateTotal(deliveries, products))}
+              {formatWon(calculateTotal(deliveries, products, bundleDiscount))}
             </p>
           </div>
         </aside>
@@ -483,6 +527,7 @@ function OrderWizardContent({
             {step === "products" && (
               <ProductStep
                 products={products}
+                bundleDiscount={bundleDiscount}
                 items={delivery.items}
                 onChange={(items) => updateDelivery({ items })}
                 onBack={() => setStep("address")}
@@ -520,6 +565,7 @@ function OrderWizardContent({
                 deliveries={editDraft?.deliveries ?? deliveries}
                 onChange={(value) => store.update("editDraft", value)}
                 products={products}
+                bundleDiscount={bundleDiscount}
                 category={category}
                 today={today}
                 maxDays={maxDeliveryDays}
@@ -539,9 +585,11 @@ function OrderWizardContent({
             )}
             {step === "review" && (
               <OrderReview
+                category={category}
                 sender={sender}
                 deliveries={deliveries}
                 products={products}
+                bundleDiscount={bundleDiscount}
                 preview={preview}
                 onEditSender={() => {
                   store.update("editDraft", null);

@@ -1,6 +1,8 @@
 "use client";
 
 import { OrderActionBar } from "./order-action-bar";
+import { SubmitOrder } from "./submit-order";
+import type { CatalogCategory } from "@/features/catalog/types";
 import { MapPin, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,12 +18,18 @@ import {
 import type { Product } from "@/features/catalog/types";
 import { productLabel } from "@/features/catalog/types";
 import type { DeliveryDraft, Sender } from "../schema";
-import { calculateSubtotal, calculateTotal, formatWon } from "../calculations";
+import {
+  calculateDeliveryAmounts,
+  calculateTotal,
+  formatWon,
+} from "../calculations";
 
 export function OrderReview({
+  category,
   sender,
   deliveries,
   products,
+  bundleDiscount = 0,
   preview,
   onEditSender,
   onEdit,
@@ -29,9 +37,11 @@ export function OrderReview({
   onAdd,
   hasPendingDelivery = false,
 }: {
+  category: CatalogCategory;
   sender: Sender;
   deliveries: DeliveryDraft[];
   products: Product[];
+  bundleDiscount?: number;
   preview: boolean;
   onEditSender: () => void;
   onEdit: (index: number) => void;
@@ -143,8 +153,32 @@ export function OrderReview({
                 );
               })}
             </ul>
+            <p className="mt-4 text-right text-sm text-muted-foreground">
+              상품 합계{" "}
+              {formatWon(
+                calculateDeliveryAmounts(
+                  delivery.items,
+                  products,
+                  bundleDiscount,
+                ).subtotal,
+              )}{" "}
+              · 묶음 할인 −
+              {formatWon(
+                calculateDeliveryAmounts(
+                  delivery.items,
+                  products,
+                  bundleDiscount,
+                ).discount,
+              )}
+            </p>
             <p className="mt-4 text-right font-semibold tabular-nums">
-              {formatWon(calculateSubtotal(delivery.items, products))}
+              {formatWon(
+                calculateDeliveryAmounts(
+                  delivery.items,
+                  products,
+                  bundleDiscount,
+                ).total,
+              )}
             </p>
           </section>
         ))}
@@ -170,7 +204,7 @@ export function OrderReview({
           <p className="mt-2 font-semibold">총 결제금액</p>
         </div>
         <strong className="text-2xl text-primary tabular-nums">
-          {formatWon(calculateTotal(deliveries, products))}
+          {formatWon(calculateTotal(deliveries, products, bundleDiscount))}
         </strong>
       </div>
       <div
@@ -179,12 +213,20 @@ export function OrderReview({
       >
         {preview
           ? "미리보기의 마지막 단계예요. 입력값은 서버에 저장되지 않으며 실제 주문번호가 발급되지 않아요."
-          : "주문 접수 서비스를 준비 중이에요. 현재 화면에서는 실제 주문을 접수할 수 없어요."}
+          : "접수 후에는 내용을 수정할 수 없어요. 주문번호를 카운터에 제시하고 결제해주세요."}
       </div>
       <OrderActionBar>
-        <Button disabled className="h-13 w-full rounded-xl text-base">
-          {preview ? "미리보기 · 실제 접수 불가" : "주문 접수 준비 중"}
-        </Button>
+        {preview ? (
+          <Button disabled className="h-13 w-full rounded-xl text-base">
+            미리보기 · 실제 접수 불가
+          </Button>
+        ) : (
+          <SubmitOrder
+            category={category}
+            sender={sender}
+            deliveries={deliveries}
+          />
+        )}
       </OrderActionBar>
     </div>
   );

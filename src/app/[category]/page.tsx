@@ -28,6 +28,7 @@ export default async function CategoryPage({
             products={catalog.products}
             today={dateInSeoul()}
             maxDeliveryDays={catalog.maxDeliveryDays}
+            bundleDiscount={catalog.bundleDiscount}
           />
         ) : (
           <section className="mx-auto max-w-2xl px-5 py-16 text-center">

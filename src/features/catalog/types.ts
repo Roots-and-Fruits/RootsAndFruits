@@ -9,6 +9,8 @@ export type Product = {
   price: number;
   inventoryEnabled: boolean;
   stockQuantity: number | null;
+  bundleEligible?: boolean;
+  unavailableReason?: string;
 };
 
 export const categoryContent = {

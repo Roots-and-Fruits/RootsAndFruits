@@ -24,11 +24,16 @@ export function calculateSubtotal(
 export function calculateTotal(
   deliveries: DeliveryDraft[],
   products: Product[],
+  bundleDiscount = 0,
 ): number {
-  return deliveries.reduce(
-    (total, delivery) => total + calculateSubtotal(delivery.items, products),
-    0,
-  );
+  return deliveries.reduce((total, delivery) => {
+    const next =
+      total +
+      calculateDeliveryAmounts(delivery.items, products, bundleDiscount).total;
+    if (!Number.isSafeInteger(next))
+      throw new Error("주문 금액의 범위를 초과했습니다.");
+    return next;
+  }, 0);
 }
 
 export const formatWon = (amount: number) =>
@@ -75,3 +80,30 @@ export function isAllowedScheduledDate(
 // Legacy DeliveryInfo.createDeliveryInfo subtracts one day from the request.
 export const processingDate = (requestedDate: string) =>
   addDays(requestedDate, -1);
+
+export function calculateDeliveryAmounts(
+  items: OrderLine[],
+  products: Product[],
+  bundleDiscount = 0,
+) {
+  if (!Number.isSafeInteger(bundleDiscount) || bundleDiscount < 0)
+    throw new Error("할인 금액을 확인해주세요.");
+  const subtotal = calculateSubtotal(items, products);
+  const eligible = new Map(
+    products.filter((p) => p.bundleEligible).map((p) => [p.id, p]),
+  );
+  let count = 0,
+    eligibleSubtotal = 0;
+  for (const item of items) {
+    const p = eligible.get(item.productId);
+    if (p) {
+      count += item.quantity;
+      eligibleSubtotal += p.price * item.quantity;
+    }
+  }
+  const discount = Math.min(
+    eligibleSubtotal,
+    Math.floor(count / 2) * bundleDiscount,
+  );
+  return { subtotal, discount, total: subtotal - discount };
+}

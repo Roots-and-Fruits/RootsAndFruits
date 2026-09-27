@@ -13,10 +13,12 @@ const rowSchema = z.object({
   price: z.number().int().nonnegative(),
   inventory_enabled: z.boolean(),
   stock_quantity: z.number().int().nullable(),
+  bundle_eligible: z.boolean(),
 });
 export type CatalogResult = {
   products: Product[];
   maxDeliveryDays: number;
+  bundleDiscount: number;
   status: "ready" | "unavailable";
 };
 
@@ -26,6 +28,7 @@ export async function getCatalog(
   const unavailable: CatalogResult = {
     products: [],
     maxDeliveryDays: 14,
+    bundleDiscount: 0,
     status: "unavailable",
   };
   if (!getSupabaseConfig()) return unavailable;
@@ -35,7 +38,7 @@ export async function getCatalog(
       supabase
         .from("products")
         .select(
-          "id, category, fruit_type, weight_grams, description, price, inventory_enabled, stock_quantity",
+          "id, category, fruit_type, weight_grams, description, price, inventory_enabled, stock_quantity, bundle_eligible",
         )
         .eq("category", category)
         .eq("is_active", true)
@@ -43,7 +46,7 @@ export async function getCatalog(
         .order("id"),
       supabase
         .from("delivery_settings")
-        .select("max_days")
+        .select("max_days, bundle_discount")
         .eq("id", 1)
         .maybeSingle(),
     ]);
@@ -59,11 +62,17 @@ export async function getCatalog(
       price: row.price,
       inventoryEnabled: row.inventory_enabled,
       stockQuantity: row.stock_quantity,
+      bundleEligible: row.bundle_eligible,
     }));
     const maxDays = z.number().int().min(3).safeParse(settings.data?.max_days);
     return {
       products,
       maxDeliveryDays: maxDays.success ? maxDays.data : 14,
+      bundleDiscount: z
+        .number()
+        .int()
+        .nonnegative()
+        .parse(settings.data?.bundle_discount),
       status: "ready",
     };
   } catch {

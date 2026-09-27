@@ -9,11 +9,12 @@ import {
   type Product,
 } from "@/features/catalog/types";
 import type { OrderLine } from "../schema";
-import { calculateSubtotal, formatWon } from "../calculations";
+import { calculateDeliveryAmounts, formatWon } from "../calculations";
 import { StepActions } from "./step-actions";
 
 export function ProductStep({
   products,
+  bundleDiscount = 0,
   items,
   onChange,
   onBack,
@@ -21,6 +22,7 @@ export function ProductStep({
   showActions = true,
 }: {
   products: Product[];
+  bundleDiscount?: number;
   items: OrderLine[];
   onChange: (items: OrderLine[]) => void;
   onBack?: () => void;
@@ -36,6 +38,12 @@ export function ProductStep({
   }
   return (
     <div>
+      {bundleDiscount > 0 && (
+        <p className="mb-5 rounded-xl bg-secondary p-4 text-sm">
+          이 배송지의 할인 대상 상품 2개마다 {formatWon(bundleDiscount)}{" "}
+          할인돼요. 종류가 달라도 합산하며, 3개는 1회·4개는 2회 할인이에요.
+        </p>
+      )}
       {products.length === 0 ? (
         <div className="rounded-2xl bg-secondary/40 px-5 py-12 text-center">
           <PackageOpen className="mx-auto mb-4 size-8 text-muted-foreground" />
@@ -72,6 +80,16 @@ export function ProductStep({
                             {product.description}
                           </span>
                         </p>
+                        {product.unavailableReason && (
+                          <p className="mt-2 text-sm text-destructive">
+                            {product.unavailableReason}
+                          </p>
+                        )}
+                        {product.bundleEligible && (
+                          <Badge variant="secondary" className="mt-2">
+                            묶음 할인 대상
+                          </Badge>
+                        )}
                         <p className="mt-2 text-sm">
                           {formatWon(product.price)}
                         </p>
@@ -117,13 +135,25 @@ export function ProductStep({
           ))}
         </div>
       )}
+      <p className="mt-4 text-right text-sm text-muted-foreground">
+        상품 합계{" "}
+        {formatWon(
+          calculateDeliveryAmounts(items, products, bundleDiscount).subtotal,
+        )}{" "}
+        · 묶음 할인 −
+        {formatWon(
+          calculateDeliveryAmounts(items, products, bundleDiscount).discount,
+        )}
+      </p>
       <div className="mt-7 flex items-center justify-between rounded-xl bg-secondary p-5">
         <span className="text-sm text-muted-foreground">
           이 배송지 · 총 {items.reduce((sum, item) => sum + item.quantity, 0)}
           박스
         </span>
         <strong className="text-lg tabular-nums">
-          {formatWon(calculateSubtotal(items, products))}
+          {formatWon(
+            calculateDeliveryAmounts(items, products, bundleDiscount).total,
+          )}
         </strong>
       </div>
       <p className="mt-3 text-right text-xs text-muted-foreground">
