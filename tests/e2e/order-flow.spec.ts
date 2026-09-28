@@ -26,6 +26,19 @@ async function recipient(page: Page, name: string) {
   await page.getByRole("button", { name: "다음", exact: true }).click();
 }
 
+async function selectFirstScheduledDate(page: Page) {
+  await page.getByLabel("희망 배송일", { exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "희망 배송일 선택" });
+  const day = dialog
+    .getByRole("button", { name: /^\d{4}-\d{2}-\d{2}/ })
+    .and(dialog.locator("button:enabled"))
+    .first();
+  const date = (await day.getAttribute("aria-label"))!.slice(0, 10);
+  await day.click();
+  await expect(dialog).toHaveCount(0);
+  return date;
+}
+
 test("home and order entry have no horizontal overflow", async ({
   page,
 }, testInfo) => {
@@ -199,8 +212,8 @@ test("unconfigured public catalog never uses preview products; admin has no bypa
     page.getByRole("heading", { name: "주문 서비스를 준비하고 있어요." }),
   ).toBeVisible();
   await expect(page.getByText("30,000원", { exact: true })).toHaveCount(0);
-  await page.goto("/admin");
-  await expect(page).toHaveURL(/\/admin\/login$/);
+  await page.goto("/namu-admin");
+  await expect(page).toHaveURL(/\/namu-admin\/login$/);
   await expect(
     page.getByRole("heading", { name: "관리자 로그인" }),
   ).toBeVisible();
@@ -432,13 +445,7 @@ test("edit validates all fields, updates products and dates, and cancellation di
       exact: true,
     })
     .click();
-  const dateInput = page.getByLabel("희망 배송일");
-  const min = (await dateInput.getAttribute("min"))!;
-  const allowedDate = new Date(`${min}T12:00:00Z`);
-  if (allowedDate.getUTCDay() === 0)
-    allowedDate.setUTCDate(allowedDate.getUTCDate() + 1);
-  const selectedDate = allowedDate.toISOString().slice(0, 10);
-  await dateInput.fill(selectedDate);
+  const selectedDate = await selectFirstScheduledDate(page);
   await expect(page.getByLabel("받는 분 휴대폰 번호")).toHaveValue(
     " 010-5555-6666 문자",
   );
@@ -728,6 +735,7 @@ test("draft restores raw input, consent, address and same-as-sender across refre
     "아직 작성 중인 주소",
   );
   await page.getByRole("link", { name: "나무와열매 홈" }).click();
+  await expect(page).toHaveURL(/\/$/);
   await page.goto("/preview/experience");
   await expect(page.getByLabel("보내는 분 이름")).toHaveValue("");
   await page.goto("/preview/product");
@@ -747,11 +755,15 @@ test("draft restores raw input, consent, address and same-as-sender across refre
   ).toHaveText("1");
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await page.getByRole("radio", { name: /예약 배송/ }).check();
-  const date = (await page.getByLabel("희망 배송일").getAttribute("min"))!;
-  await page.getByLabel("희망 배송일").fill(date);
+  await selectFirstScheduledDate(page);
+  const dateLabel = await page
+    .getByLabel("희망 배송일", { exact: true })
+    .innerText();
   await page.reload();
   await expect(page.getByRole("radio", { name: /예약 배송/ })).toBeChecked();
-  await expect(page.getByLabel("희망 배송일")).toHaveValue(date);
+  await expect(page.getByLabel("희망 배송일", { exact: true })).toHaveText(
+    dateLabel,
+  );
 });
 
 test("draft restores unfinished additional delivery and edit; cancel and reset remove changes", async ({
@@ -891,4 +903,79 @@ test("draft with an unavailable catalog item is preserved and can be explicitly 
   await page.getByRole("button", { name: "처음부터", exact: true }).click();
   await page.getByRole("button", { name: "입력 초기화", exact: true }).click();
   await expect(page.getByLabel("보내는 분 이름")).toHaveValue("");
+});
+
+test("scheduled calendar disables Sundays and dates outside the booking window", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/preview/product");
+  await sender(page);
+  await recipient(page, "달력 테스트");
+  await page
+    .getByRole("button", {
+      name: "감귤 3kg · 선물용 · 대과 수량 늘리기",
+      exact: true,
+    })
+    .click();
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  await page.getByRole("radio", { name: /예약 배송/ }).check();
+  const trigger = page.getByLabel("희망 배송일", { exact: true });
+  await expect(trigger).toHaveText("날짜를 선택해주세요");
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "희망 배송일 선택" });
+  await expect(dialog).toBeVisible();
+  expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const add = (days: number) => {
+    const date = new Date(`${today}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+  let sundayCount = 0,
+    outsideCount = 0;
+  for (let month = 0; month < 2; month++) {
+    const days = dialog.getByRole("button", { name: /^\d{4}-\d{2}-\d{2}/ });
+    for (const day of await days.all()) {
+      const value = (await day.getAttribute("aria-label"))!.slice(0, 10);
+      const sunday = new Date(`${value}T12:00:00Z`).getUTCDay() === 0;
+      const outside = value < add(3) || value > add(14);
+      if (sunday) sundayCount++;
+      if (outside) outsideCount++;
+      if (sunday || outside) await expect(day).toBeDisabled();
+      else await expect(day).toBeEnabled();
+    }
+    const nextMonth = dialog.getByRole("button", {
+      name: "다음 달",
+      exact: true,
+    });
+    if (!(await nextMonth.isEnabled())) break;
+    await nextMonth.click();
+  }
+  expect(sundayCount).toBeGreaterThan(0);
+  expect(outsideCount).toBeGreaterThan(0);
+  await page.screenshot({
+    path: testInfo.outputPath("scheduled-calendar.png"),
+  });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveText("날짜를 선택해주세요");
+  const date = await selectFirstScheduledDate(page);
+  await trigger.click();
+  await expect(
+    dialog.getByRole("button", { name: new RegExp(`^${date}.*선택됨`) }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "닫기", exact: true }).click();
+  await page.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "배송지 1 주문 요약" }),
+  ).toContainText(date);
 });

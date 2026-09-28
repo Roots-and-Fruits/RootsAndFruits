@@ -78,6 +78,8 @@ export type Shipment = {
   order_items: SavedItem[];
 };
 export type Checkout = {
+  member_id?: string | null;
+  order_source?: "guest" | "kakao" | "tablet";
   id: string;
   order_number: number;
   category: "product" | "experience";

@@ -12,24 +12,41 @@ test.beforeEach(async ({ page }, testInfo) => {
   }
 });
 async function login(page: import("@playwright/test").Page) {
-  await page.goto("/admin/login");
+  await page.goto("/namu-admin/login");
   await page.getByLabel("아이디", { exact: true }).fill("owner");
   await page.getByLabel("비밀번호", { exact: true }).fill("test-password-123");
   await page
     .getByRole("button", { name: "관리자 로그인", exact: true })
     .click();
-  await expect(page).toHaveURL(/\/admin\/counter/);
+  await expect(page).toHaveURL(/\/namu-admin\/counter/);
 }
+test("admin entry is direct-only and old admin routes are unavailable", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/");
+  await expect(
+    page.locator('a[href^="/namu-admin"], a[href^="/admin"]'),
+  ).toHaveCount(0);
+  for (const path of ["/admin", "/admin/login", "/admin/orders"]) {
+    expect((await request.get(path, { maxRedirects: 0 })).status()).toBe(404);
+  }
+  await page.goto("/namu-admin");
+  await expect(page).toHaveURL(/\/namu-admin\/login$/);
+  await expect(
+    page.getByRole("heading", { name: "관리자 로그인" }),
+  ).toBeVisible();
+});
 test("admin boundaries, product settings and real order lifecycle against isolated DB", async ({
   page,
   request,
 }, testInfo) => {
-  await page.goto("/admin/products");
-  await expect(page).toHaveURL(/\/admin\/login/);
+  await page.goto("/namu-admin/products");
+  await expect(page).toHaveURL(/\/namu-admin\/login/);
   expect((await request.get("/api/admin/products")).status()).toBe(401);
   await login(page);
   await page.getByRole("link", { name: "상품·재고", exact: true }).click();
-  await expect(page).toHaveURL(/\/admin\/products$/);
+  await expect(page).toHaveURL(/\/namu-admin\/products$/);
   await expect(
     page.getByRole("heading", { name: "상품·재고", exact: true }),
   ).toBeVisible();
@@ -80,7 +97,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   });
   await page.getByRole("button", { name: "닫기", exact: true }).click();
   await page.getByRole("link", { name: "설정", exact: true }).click();
-  await expect(page).toHaveURL(/\/admin\/settings$/);
+  await expect(page).toHaveURL(/\/namu-admin\/settings$/);
   await expect(
     page.getByRole("heading", { name: "설정", exact: true }),
   ).toBeVisible();
@@ -134,7 +151,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   expect(result.status).toBe(200);
   expect(result.data.total).toBe(87000);
   await page.getByRole("link", { name: "카운터", exact: true }).click();
-  await expect(page).toHaveURL(/\/admin\/counter$/);
+  await expect(page).toHaveURL(/\/namu-admin\/counter$/);
   await expect(
     page.getByRole("heading", { name: "카운터", exact: true }),
   ).toBeVisible();
@@ -159,7 +176,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   await page.getByRole("button", { name: "확인", exact: true }).click();
   await expect(page.getByText("결제 완료를 기록했습니다.")).toBeVisible();
   await page.getByRole("link", { name: "발송 관리", exact: true }).click();
-  await expect(page).toHaveURL(/\/admin\/shipping$/);
+  await expect(page).toHaveURL(/\/namu-admin\/shipping$/);
   await expect(
     page.getByRole("heading", { name: "발송 관리", exact: true }),
   ).toBeVisible();
@@ -208,9 +225,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   await expect(
     page.getByRole("button", { name: "결제 전 취소", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "주문 재접수", exact: true })
-    .click();
+  await page.getByRole("button", { name: "주문 재접수", exact: true }).click();
   const addDelivery = page.getByRole("button", {
     name: "배송지 추가",
     exact: true,
@@ -236,20 +251,37 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   await secondDelivery.getByRole("button", { name: "이 배송지 제거" }).click();
   await expect(secondDelivery).toHaveCount(0);
   await page.getByLabel("받는 분 이름", { exact: true }).fill("재접수 수령인");
+  await page.getByRole("radio", { name: /예약 배송/ }).check();
+  await page.getByLabel("희망 배송일", { exact: true }).click();
+  const calendar = page.getByRole("dialog", { name: "희망 배송일 선택" });
+  const availableDay = calendar
+    .getByRole("button", { name: /^\d{4}-\d{2}-\d{2}/ })
+    .and(calendar.locator("button:enabled"))
+    .first();
+  const requestedDate = (await availableDay.getAttribute("aria-label"))!.slice(
+    0,
+    10,
+  );
+  await availableDay.click();
+  await expect(calendar).toHaveCount(0);
   const reorderedResponse = page.waitForResponse(
     (r) => r.url().includes("/reorder") && r.request().method() === "POST",
   );
   await page
     .getByRole("button", { name: "새 주문으로 접수", exact: true })
     .click();
-  const reordered = await (await reorderedResponse).json();
+  const response = await reorderedResponse;
+  expect(
+    response.request().postDataJSON().order.deliveries[0].requestedDate,
+  ).toBe(requestedDate);
+  const reordered = await response.json();
   await expect(
     page.getByText(
       `${reordered.orderNumber}번으로 재접수했습니다. 원본은 그대로 유지됩니다.`,
     ),
   ).toBeVisible();
   await page.getByRole("link", { name: "카운터", exact: true }).click();
-  await expect(page).toHaveURL(/\/admin\/counter$/);
+  await expect(page).toHaveURL(/\/namu-admin\/counter$/);
   await expect(
     page.getByRole("heading", { name: "카운터", exact: true }),
   ).toBeVisible();
@@ -262,9 +294,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
       name: new RegExp(`^${reordered.orderNumber}번 고객`),
     })
     .click();
-  await page
-    .getByRole("button", { name: "결제 전 취소", exact: true })
-    .click();
+  await page.getByRole("button", { name: "결제 전 취소", exact: true }).click();
   await page.getByRole("button", { name: "확인", exact: true }).click();
   await expect(
     page.getByText("주문을 취소하고 차감 재고를 반환했습니다."),
@@ -290,7 +320,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
     fullPage: true,
   });
   await page.getByRole("button", { name: "로그아웃", exact: true }).click();
-  await expect(page).toHaveURL(/\/admin\/login/);
+  await expect(page).toHaveURL(/\/namu-admin\/login/);
 });
 
 test("customer submission retry after lost response retains one number and clears draft", async ({
@@ -369,6 +399,15 @@ test("customer submission retry after lost response retains one number and clear
       const data = await response.json();
       firstNumber = data.orderNumber;
       await route.abort("failed");
+    } else if (calls === 2) {
+      expect(id).toBe(firstId);
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "로그인이 만료되었어요. 다시 로그인해주세요.",
+        }),
+      });
     } else {
       expect(id).toBe(firstId);
       await route.continue();
@@ -379,11 +418,20 @@ test("customer submission retry after lost response retains one number and clear
     page.getByRole("heading", { name: "접수 결과를 확인해주세요." }),
   ).toBeVisible();
   await page.getByRole("button", { name: "주문 접수", exact: true }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText(
+    "로그인이 만료",
+  );
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem("roots-and-fruits:submission:product"),
+    ),
+  ).toContain(firstId);
+  await page.getByRole("button", { name: "주문 접수", exact: true }).click();
   await expect(page).toHaveURL(/order-complete/);
   await expect(
     page.getByText(`${firstNumber}번`, { exact: true }),
   ).toBeVisible();
-  expect(calls).toBe(2);
+  expect(calls).toBe(3);
   expect(
     await page.evaluate(() =>
       localStorage.getItem("roots-and-fruits:order-draft:v1:live:product"),
@@ -471,7 +519,7 @@ test("drag product and fruit group order, cancel and persist by category", async
     );
     expect(status).toBe(200);
   }
-  await page.goto("/admin/products");
+  await page.goto("/namu-admin/products");
   await page.getByRole("button", { name: "체험 상품", exact: true }).click();
   const handles = () =>
     page.getByRole("button", {

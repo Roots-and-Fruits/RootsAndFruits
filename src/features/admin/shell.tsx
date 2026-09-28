@@ -22,7 +22,7 @@ export function AdminShell({ section }: { section: string }) {
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-4 lg:flex-nowrap lg:gap-8">
           <Link
             className="shrink-0 font-semibold text-primary lg:text-sm"
-            href="/admin/counter"
+            href="/namu-admin/counter"
           >
             나무와 열매 · 관리자
           </Link>
@@ -32,7 +32,7 @@ export function AdminShell({ section }: { section: string }) {
             onClick={async () => {
               try {
                 await adminRequest("logout", {});
-                router.replace("/admin/login");
+                router.replace("/namu-admin/login");
                 router.refresh();
               } catch (e) {
                 setError((e as Error).message);
@@ -48,7 +48,7 @@ export function AdminShell({ section }: { section: string }) {
             {links.map(([key, label]) => (
               <Link
                 key={key}
-                href={`/admin/${key}`}
+                href={`/namu-admin/${key}`}
                 aria-current={section === key ? "page" : undefined}
                 className={`rounded-lg px-4 py-3 text-sm transition-colors lg:px-3 lg:py-2 ${section === key ? "bg-primary text-primary-foreground" : "bg-secondary lg:bg-transparent lg:hover:bg-secondary"}`}
               >

@@ -33,12 +33,13 @@ const payload = (deliveries: ReturnType<typeof delivery>[]) => ({
 async function setup() {
   const db = new PGlite();
   await db.exec(
-    `create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;insert into auth.users values('${staff}');`,
+    `create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text);create table auth.identities(user_id uuid references auth.users(id),provider text);create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;insert into auth.users(id) values('${staff}');`,
   );
   for (const f of [
     "202609200001_catalog.sql",
     "202609260001_operations.sql",
     "202609260002_product_order.sql",
+    "202609290001_customer_auth.sql",
   ])
     await db.exec(await readFile(`supabase/migrations/${f}`, "utf8"));
   await db.query("select public.provision_staff(1::smallint,$1,$2,$3)", [
@@ -491,6 +492,167 @@ test("Postgres: grouped product ordering, append, stale saves and role protectio
       reorder([...current.map((p) => p.id).slice(1), last], current),
       /목록이 변경/,
     );
+  } finally {
+    await db.close();
+  }
+});
+
+test("Postgres: customer ownership, tablet provisioning, retries and RLS", async () => {
+  const db = await setup();
+  const kakao = crypto.randomUUID(),
+    tablet = crypto.randomUUID(),
+    stranger = crypto.randomUUID();
+  try {
+    await db.query(
+      "insert into auth.users(id,email) values($1,null),($2,'tablet-01@tablet.roots-and-fruits.invalid'),($3,'stranger@example.test')",
+      [kakao, tablet, stranger],
+    );
+    await db.query(
+      "insert into auth.identities(user_id,provider) values($1,'kakao'),($2,'email')",
+      [kakao, stranger],
+    );
+    await db.query(
+      "select provision_tablet($1,'tablet-01','tablet-01@tablet.roots-and-fruits.invalid')",
+      [tablet],
+    );
+    await assert.rejects(
+      db.query(
+        "select provision_tablet($1,'owner','owner@tablet.roots-and-fruits.invalid')",
+        [staff],
+      ),
+    );
+    assert.equal(
+      (
+        await db.query<{ kind: string }>("select account_kind($1) kind", [
+          tablet,
+        ])
+      ).rows[0].kind,
+      "tablet",
+    );
+    assert.equal(
+      (
+        await db.query<{ kind: string | null }>(
+          "select account_kind($1) kind",
+          [stranger],
+        )
+      ).rows[0].kind,
+      null,
+    );
+    const order = JSON.stringify(
+      payload([delivery([{ productId: p1, quantity: 2 }])]),
+    );
+    for (const [member, source] of [
+      [null, "guest"],
+      [kakao, "kakao"],
+      [tablet, "tablet"],
+    ] as const) {
+      const request = crypto.randomUUID();
+      const submit = () =>
+        db.query("select submit_customer_checkout($1,$2::jsonb,$3) result", [
+          request,
+          order,
+          member,
+        ]);
+      const first = await submit();
+      assert.deepEqual((await submit()).rows, first.rows);
+      const saved = (
+        await db.query<{
+          member_id: string | null;
+          order_source: string;
+          id: string;
+        }>(
+          "select id,member_id,order_source from checkouts where request_id=$1",
+          [request],
+        )
+      ).rows[0];
+      assert.equal(saved.member_id, member);
+      assert.equal(saved.order_source, source);
+      await assert.rejects(
+        db.query("select submit_customer_checkout($1,$2::jsonb,$3)", [
+          request,
+          order,
+          member === kakao ? tablet : kakao,
+        ]),
+      );
+      assert.equal(
+        (
+          await db.query<{ n: number }>(
+            "select count(*)::int n from stock_movements where checkout_id=$1",
+            [saved.id],
+          )
+        ).rows[0].n,
+        1,
+      );
+    }
+    for (const invalid of [staff, stranger])
+      await assert.rejects(
+        db.query("select submit_customer_checkout($1,$2::jsonb,$3)", [
+          crypto.randomUUID(),
+          order,
+          invalid,
+        ]),
+      );
+    await db.query(
+      "update private.tablet_accounts set enabled=false where user_id=$1",
+      [tablet],
+    );
+    await assert.rejects(
+      db.query("select submit_customer_checkout($1,$2::jsonb,$3)", [
+        crypto.randomUUID(),
+        order,
+        tablet,
+      ]),
+    );
+    assert.equal(
+      (
+        await db.query<{ email: string | null }>(
+          "select tablet_email('tablet-01') email",
+        )
+      ).rows[0].email,
+      null,
+    );
+    assert.equal(
+      (await db.query<{ n: number }>("select count(*)::int n from checkouts"))
+        .rows[0].n,
+      3,
+    );
+    for (const role of ["anon", "authenticated"]) {
+      await db.exec(`set role ${role}`);
+      await assert.rejects(
+        db.query(
+          "select provision_tablet($1,'hacker','hacker@tablet.roots-and-fruits.invalid')",
+          [stranger],
+        ),
+      );
+      await assert.rejects(db.query("select tablet_email('tablet-01')"));
+      await assert.rejects(db.query("select account_kind($1)", [staff]));
+      await assert.rejects(
+        db.query("select submit_customer_checkout($1,$2::jsonb,$3)", [
+          crypto.randomUUID(),
+          order,
+          kakao,
+        ]),
+      );
+      await assert.rejects(db.query("select * from private.tablet_accounts"));
+      if (role === "authenticated") {
+        for (const member of [kakao, tablet]) {
+          await db.query(
+            "select set_config('request.jwt.claim.sub',$1,false)",
+            [member],
+          );
+          assert.equal(
+            (await db.query("select * from checkouts")).rows.length,
+            0,
+          );
+          assert.equal(
+            (await db.query<{ staff: boolean }>("select is_staff() staff"))
+              .rows[0].staff,
+            false,
+          );
+        }
+      }
+      await db.exec("reset role");
+    }
   } finally {
     await db.close();
   }

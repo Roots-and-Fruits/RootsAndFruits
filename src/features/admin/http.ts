@@ -50,10 +50,12 @@ export function checkDb(error: { message: string; code?: string } | null) {
       /^[가-힣]/.test(error.message)
         ? error.message
         : "데이터를 처리하지 못했습니다. 같은 요청으로 다시 시도해주세요.",
-      error.code === "P0001" ||
-        error.code === "P0002" ||
-        /^(22|23)/.test(error.code ?? "")
-        ? 400
-        : 503,
+      error.code === "28000"
+        ? 401
+        : error.code === "P0001" ||
+            error.code === "P0002" ||
+            /^(22|23)/.test(error.code ?? "")
+          ? 400
+          : 503,
     );
 }

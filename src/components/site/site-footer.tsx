@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { SessionLink } from "@/features/auth/session-link";
 
 export function SiteFooter() {
   return (
@@ -8,12 +8,7 @@ export function SiteFooter() {
         마음
       </p>
       <div className="flex gap-6">
-        <Link href="/login" className="hover:text-primary">
-          회원 로그인
-        </Link>
-        <Link href="/admin/login" className="hover:text-primary">
-          관리자
-        </Link>
+        <SessionLink />
       </div>
     </footer>
   );

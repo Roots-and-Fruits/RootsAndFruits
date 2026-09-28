@@ -7,7 +7,7 @@ export default async function AdminSection({
 }: {
   params: Promise<{ section: string }>;
 }) {
-  if (!(await getStaff())) redirect("/admin/login");
+  if (!(await getStaff())) redirect("/namu-admin/login");
   const { section } = await params;
   if (
     !["counter", "orders", "shipping", "products", "settings"].includes(section)

@@ -35,6 +35,16 @@ export function OrderDetail({
       <p>
         {c.sender.name} · {c.sender.phone} · {stateLabel[c.status]}
       </p>
+      <p className="text-sm text-muted-foreground">
+        접수 구분:{" "}
+        {c.order_source === "tablet"
+          ? "공용 태블릿 회원"
+          : c.order_source === "kakao"
+            ? "카카오 회원"
+            : c.original_id
+              ? "관리자 재접수"
+              : "비회원"}
+      </p>
       {c.original_id && (
         <p className="text-sm text-muted-foreground">
           재접수 주문{c.original_number ? ` · 원본 ${c.original_number}번` : ""}

@@ -11,6 +11,7 @@
     "test": "tsx --test tests/unit/*.test.ts",
     "test:e2e": "playwright test",
     "test:db": "tsx --test tests/integration/*.test.ts",
+    "tablet:create": "node --env-file=.env.local scripts/create-tablet.mjs",
     "admin:create": "node --env-file=.env.local scripts/create-admin.mjs",
     "test:admin-ui": "playwright test --config playwright.admin.config.ts"
   },

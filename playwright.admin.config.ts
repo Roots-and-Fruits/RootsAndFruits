@@ -17,7 +17,7 @@ export default defineConfig({
   ],
   webServer: {
     command: "node tests/admin-ui/server.mjs",
-    url: "http://127.0.0.1:3110/admin/login",
+    url: "http://127.0.0.1:3110/namu-admin/login",
     timeout: 120000,
     reuseExistingServer: false,
   },

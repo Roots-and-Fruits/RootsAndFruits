@@ -49,7 +49,7 @@ export function SubmitOrder({
       });
       const data = await response.json();
       if (!response.ok) {
-        if (response.status >= 400 && response.status < 500)
+        if (response.status === 400 || response.status === 422)
           clearPendingSubmission(category);
         throw new Error(
           data.error || "접수를 완료하지 못했어요. 다시 시도해주세요.",

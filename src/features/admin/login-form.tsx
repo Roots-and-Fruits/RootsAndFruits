@@ -21,7 +21,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
         setError("");
         try {
           await adminRequest("login", value);
-          router.replace("/admin/counter");
+          router.replace("/namu-admin/counter");
           router.refresh();
         } catch (e) {
           setError((e as Error).message);

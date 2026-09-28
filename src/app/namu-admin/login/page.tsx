@@ -5,7 +5,7 @@ import { getStaff } from "@/features/admin/auth";
 import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 export default async function AdminLogin() {
-  if (await getStaff()) redirect("/admin/counter");
+  if (await getStaff()) redirect("/namu-admin/counter");
   return (
     <>
       <SiteHeader />

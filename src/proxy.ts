@@ -21,4 +21,15 @@ export async function proxy(request: NextRequest) {
   response.headers.set("Cache-Control", "private, no-store");
   return response;
 }
-export const config = { matcher: ["/admin/:path*", "/api/admin/:path*"] };
+export const config = {
+  matcher: [
+    "/namu-admin/:path*",
+    "/api/:path*",
+    "/auth/:path*",
+    "/login",
+    "/tablet-login",
+    "/product",
+    "/experience",
+    "/",
+  ],
+};
