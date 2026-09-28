@@ -1,0 +1,46 @@
+.calendar:global(.rdp-root) {
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: var(--secondary);
+  --rdp-day-width: auto;
+  --rdp-day-height: 44px;
+  --rdp-day_button-width: 100%;
+  --rdp-day_button-height: 44px;
+  --rdp-day_button-border-radius: 10px;
+  --rdp-nav_button-height: 44px;
+  --rdp-nav_button-width: 44px;
+  --rdp-disabled-opacity: 0.35;
+  width: 100%;
+  margin: 0;
+}
+.calendar :global(.rdp-months),
+.calendar :global(.rdp-month) {
+  width: 100%;
+  max-width: none;
+}
+.calendar :global(.rdp-month_grid) {
+  width: 100%;
+  table-layout: fixed;
+}
+.calendar :global(.rdp-month_caption) {
+  align-items: center;
+  font-size: 1rem;
+}
+.calendar :global(.rdp-day_button) {
+  font-size: 0.875rem;
+}
+.calendar :global(.rdp-day_button):enabled {
+  font-weight: 700;
+}
+.calendar :global(.rdp-day_button):enabled:hover {
+  background: var(--secondary);
+}
+.calendar :global(.rdp-selected) :global(.rdp-day_button) {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.calendar :global(.rdp-day_button):focus-visible,
+.calendar :global(.rdp-button_previous):focus-visible,
+.calendar :global(.rdp-button_next):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}

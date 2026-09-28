@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Truck, CalendarDays } from "lucide-react";
-import { LabeledInput } from "@/components/forms/labeled-input";
+import { DatePicker } from "@/components/forms/date-picker";
 import { addDays, isAllowedScheduledDate } from "../calculations";
 import { StepActions } from "./step-actions";
 
@@ -76,15 +76,16 @@ export function DeliveryDateStep({
       </fieldset>
       {mode === "scheduled" && (
         <div className="mt-6">
-          <LabeledInput
+          <DatePicker
             id={`${idPrefix}-requested-date`}
             label="희망 배송일"
-            type="date"
+            today={today}
+            disabledWeekdays={[0]}
             value={date}
             min={addDays(today, 3)}
             max={addDays(today, maxDays)}
-            onChange={(event) => {
-              onChange(mode, event.target.value);
+            onChange={(value) => {
+              onChange(mode, value);
               setError("");
             }}
             error={validationError || error}

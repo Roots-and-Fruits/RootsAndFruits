@@ -39,7 +39,7 @@ export function ProductStep({
   return (
     <div>
       {bundleDiscount > 0 && (
-        <p className="mb-5 rounded-xl bg-secondary p-4 text-sm">
+        <p className="mb-4 rounded-xl bg-secondary px-3 py-2.5 text-sm">
           이 배송지의 할인 대상 상품 2개마다 {formatWon(bundleDiscount)}{" "}
           할인돼요. 종류가 달라도 합산하며, 3개는 1회·4개는 2회 할인이에요.
         </p>
@@ -55,13 +55,13 @@ export function ProductStep({
           </p>
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-5">
           {[...groups].map(([fruit, group]) => (
             <section key={fruit} aria-label={fruit}>
-              <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
+              <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
                 {fruit}
               </h3>
-              <div className="divide-y divide-border rounded-2xl border border-border">
+              <div className="divide-y divide-border rounded-xl border border-border">
                 {group.map((product) => {
                   const count =
                     items.find((item) => item.productId === product.id)
@@ -70,39 +70,44 @@ export function ProductStep({
                   return (
                     <article
                       key={product.id}
-                      className={`flex flex-wrap items-center justify-between gap-4 p-5 ${unavailable ? "opacity-55" : ""}`}
+                      className={`flex flex-nowrap items-center justify-between gap-3 px-3 py-2.5 sm:px-4 ${unavailable ? "opacity-55" : ""}`}
                       aria-label={productLabel(product)}
                     >
-                      <div>
-                        <p className="font-semibold">
+                      <div className="min-w-0 flex-1 break-words">
+                        <p className="text-sm font-semibold leading-5">
                           {product.weightGrams / 1000}kg{" "}
                           <span className="ml-1 text-sm font-normal text-muted-foreground">
                             {product.description}
                           </span>
                         </p>
                         {product.unavailableReason && (
-                          <p className="mt-2 text-sm text-destructive">
+                          <p className="mt-1 text-xs text-destructive">
                             {product.unavailableReason}
                           </p>
                         )}
-                        {product.bundleEligible && (
-                          <Badge variant="secondary" className="mt-2">
-                            묶음 할인 대상
-                          </Badge>
-                        )}
-                        <p className="mt-2 text-sm">
-                          {formatWon(product.price)}
-                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="text-sm tabular-nums">
+                            {formatWon(product.price)}
+                          </span>
+                          {product.bundleEligible && (
+                            <Badge
+                              variant="secondary"
+                              className="px-1.5 text-[11px]"
+                            >
+                              묶음 할인 대상
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                       {unavailable ? (
                         <Badge variant="secondary">품절</Badge>
                       ) : (
-                        <div className="flex items-center gap-1 rounded-full border border-border bg-background p-1">
+                        <div className="flex w-fit flex-none items-center rounded-full border border-border bg-background">
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="size-10 rounded-full"
+                            className="size-11 rounded-full"
                             aria-label={`${productLabel(product)} 수량 줄이기`}
                             disabled={count === 0}
                             onClick={() => updateQuantity(product, count - 1)}
@@ -110,7 +115,7 @@ export function ProductStep({
                             <Minus className="size-4" />
                           </Button>
                           <output
-                            className="min-w-7 text-center font-semibold tabular-nums"
+                            className="min-w-6 text-center text-sm font-semibold tabular-nums"
                             aria-label={`${productLabel(product)} 수량`}
                           >
                             {count}
@@ -119,7 +124,7 @@ export function ProductStep({
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="size-10 rounded-full"
+                            className="size-11 rounded-full"
                             aria-label={`${productLabel(product)} 수량 늘리기`}
                             onClick={() => updateQuantity(product, count + 1)}
                           >
@@ -135,7 +140,7 @@ export function ProductStep({
           ))}
         </div>
       )}
-      <p className="mt-4 text-right text-sm text-muted-foreground">
+      <p className="mt-3 text-right text-sm text-muted-foreground">
         상품 합계{" "}
         {formatWon(
           calculateDeliveryAmounts(items, products, bundleDiscount).subtotal,
@@ -145,7 +150,7 @@ export function ProductStep({
           calculateDeliveryAmounts(items, products, bundleDiscount).discount,
         )}
       </p>
-      <div className="mt-7 flex items-center justify-between rounded-xl bg-secondary p-5">
+      <div className="mt-4 flex items-center justify-between rounded-xl bg-secondary px-4 py-3">
         <span className="text-sm text-muted-foreground">
           이 배송지 · 총 {items.reduce((sum, item) => sum + item.quantity, 0)}
           박스
@@ -156,7 +161,7 @@ export function ProductStep({
           )}
         </strong>
       </div>
-      <p className="mt-3 text-right text-xs text-muted-foreground">
+      <p className="mt-2 text-right text-xs text-muted-foreground">
         배송비가 포함된 금액이에요.
       </p>
       {showActions && (
