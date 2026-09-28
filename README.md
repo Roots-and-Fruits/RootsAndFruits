@@ -14,7 +14,7 @@ Next.js + Supabase로 새로 구성하는 농장 택배 주문 서비스입니�
 
 **실제 사용 전 Supabase 연결·마이그레이션·관리자 계정 준비가 필요합니다.**
 원격 연결과 검증 상태는 [구현 기록](docs/implementation-status.md)의 최신 절을 확인하세요.
-고객 카카오 로그인·태블릿 회원 인증·회원 페이지는 후속 범위입니다.
+카카오 로그인·태블릿 ID/비밀번호 인증 및 주문 회원 연결 코드를 구현했습니다. 추가 SQL과 외부 인증 설정이 필요하며, 회원 주문 내역·저장 배송지 화면은 후속 범위입니다.
 
 ## 로컬 실행
 
@@ -61,7 +61,8 @@ Mac의 Wi-Fi 주소는 `ipconfig getifaddr en0`으로 확인할 수 있습니다
 ### Supabase 연결 준비
 
 [설정 안내](docs/supabase-setup.md)에 따라 새 프로젝트, SQL, 환경값, 관리자 계정 두 개를 준비합니다.
-관리자는 `/admin/login`, 실제 주문은 `/product` 또는 `/experience`입니다.
+관리자는 `/namu-admin/login`, 실제 주문은 `/product` 또는 `/experience`입니다.
+고객 카카오 로그인은 `/login`, 태블릿 전용 로그인은 `/tablet-login`입니다. 추가 SQL·외부 인증 설정 및 `npm run tablet:create` 사용법은 [회원 인증 설정](docs/customer-auth-setup.md)을 참고하세요.
 서비스 비밀 키를 `NEXT_PUBLIC_*` 변수나 저장소에 넣지 마세요. 가상 상품은 운영 DB에 자동 등록하지 않습니다.
 
 ## 구조
