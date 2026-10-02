@@ -70,8 +70,8 @@ for (const kind of ["tablet", "kakao"] as const) {
         path: testInfo.outputPath("kakao-login.png"),
         fullPage: true,
       });
-      const authorizeRequest = page.waitForRequest((request) =>
-        new URL(request.url()).pathname === "/auth/v1/authorize",
+      const authorizeRequest = page.waitForRequest(
+        (request) => new URL(request.url()).pathname === "/auth/v1/authorize",
       );
       await page
         .getByRole("button", { name: "카카오 로그인", exact: true })
@@ -84,6 +84,24 @@ for (const kind of ["tablet", "kakao"] as const) {
     const session = await (await page.request.get("/api/auth/session")).json();
     expect(session.account.kind).toBe(kind);
     await page.reload();
+    expect(
+      (await (await page.request.get("/api/auth/session")).json()).account.id,
+    ).toBe(session.account.id);
+    await page.getByLabel("보내는 분 이름").fill("회원 작성 중");
+    await page.getByRole("link", { name: "나무와열매 홈" }).click();
+    await page.locator('a[href="/order/start/product"]').click();
+    const draftDialog = page.getByRole("dialog", {
+      name: "작성 중인 주문이 있어요",
+    });
+    await expect(draftDialog).toBeVisible();
+    await draftDialog.getByRole("button", { name: "이어 작성하기" }).click();
+    await expect(page.getByLabel("보내는 분 이름")).toHaveValue("회원 작성 중");
+    await page.getByRole("link", { name: "나무와열매 홈" }).click();
+    await page.locator('a[href="/order/start/product"]').click();
+    await draftDialog
+      .getByRole("button", { name: "처음부터", exact: true })
+      .click();
+    await expect(page.getByLabel("보내는 분 이름")).toHaveValue("");
     expect(
       (await (await page.request.get("/api/auth/session")).json()).account.id,
     ).toBe(session.account.id);

@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 const entryCards = [
   {
-    href: "/product",
+    href: "/order/start/product",
     category: "product",
     icon: Package,
     eyebrow: "01 / FARM SHOP",
@@ -24,7 +24,7 @@ const entryCards = [
     action: "상품 주문하기",
   },
   {
-    href: "/experience",
+    href: "/order/start/experience",
     category: "experience",
     icon: HandHeart,
     eyebrow: "02 / FARM EXPERIENCE",
@@ -133,13 +133,13 @@ export default function Home() {
             <div className="mt-3 flex flex-wrap gap-5">
               <Link
                 className="underline underline-offset-4"
-                href="/preview/product"
+                href="/order/start/product?preview=1"
               >
                 일반 주문 미리보기
               </Link>
               <Link
                 className="underline underline-offset-4"
-                href="/preview/experience"
+                href="/order/start/experience?preview=1"
               >
                 체험 주문 미리보기
               </Link>

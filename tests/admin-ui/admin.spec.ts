@@ -489,6 +489,15 @@ test("customer submission retry after lost response retains one number and clear
   await expect(
     page.getByRole("heading", { name: "접수 결과를 확인해주세요." }),
   ).toBeVisible();
+  await page.getByRole("link", { name: "나무와열매 홈" }).click();
+  await page.locator('a[href="/order/start/product"]').click();
+  await expect(
+    page.getByRole("heading", { name: "접수 결과를 확인해주세요." }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "작성 중인 주문이 있어요" }),
+  ).toHaveCount(0);
+  expect(calls).toBe(1);
   await page.getByRole("button", { name: "주문 접수", exact: true }).click();
   await expect(page.locator("main").getByRole("alert")).toContainText(
     "로그인이 만료",

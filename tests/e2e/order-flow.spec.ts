@@ -45,7 +45,7 @@ test("home and order entry have no horizontal overflow", async ({
   await page.goto("/");
   await expect(
     page.getByRole("heading", {
-      name: /산지에서 갓 수확한 신선함 그대로,\s*동장에서 식탁으로 직배송!/,
+      name: /산지에서 갓 수확한 신선함 그대로,\s*농장에서 식탁으로 직배송!/,
     }),
   ).toBeVisible();
   expect(

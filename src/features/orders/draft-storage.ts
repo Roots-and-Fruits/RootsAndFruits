@@ -63,6 +63,35 @@ export function draftStorageKey(category: string, preview: boolean) {
   return `roots-and-fruits:order-draft:v1:${preview ? "preview" : "live"}:${category}`;
 }
 
+export function hasOrderDraft(draft: OrderDraft) {
+  return (
+    Object.values(draft.sender).some(Boolean) ||
+    draft.deliveries.length > 1 ||
+    draft.deliveries.some(
+      (delivery) =>
+        Object.values(delivery.recipient).some(Boolean) ||
+        delivery.items.length > 0 ||
+        delivery.deliveryMode !== "regular" ||
+        Boolean(delivery.requestedDate),
+    ) ||
+    draft.step !== "sender" ||
+    draft.pendingDelivery !== null ||
+    draft.editDraft !== null
+  );
+}
+
+const resetEvent = "order-draft-reset";
+export function clearOrderDraft(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    return false;
+  }
+  // Native storage events only reach other tabs. Also invalidate cached forms here.
+  window.dispatchEvent(new CustomEvent(resetEvent, { detail: key }));
+  return true;
+}
+
 type Snapshot = {
   draft: OrderDraft;
   revision: number;
@@ -103,6 +132,9 @@ export function createDraftStore(key: string) {
   function onPageShow(event: PageTransitionEvent) {
     if (event.persisted) restore();
   }
+  function onReset(event: Event) {
+    if ((event as CustomEvent<string>).detail === key) restore();
+  }
   return {
     getSnapshot: () => snapshot,
     getServerSnapshot: () => null,
@@ -112,12 +144,14 @@ export function createDraftStore(key: string) {
         restore();
         window.addEventListener("storage", onStorage);
         window.addEventListener("pageshow", onPageShow);
+        window.addEventListener(resetEvent, onReset);
       }
       return () => {
         listeners.delete(listener);
         if (!listeners.size) {
           window.removeEventListener("storage", onStorage);
           window.removeEventListener("pageshow", onPageShow);
+          window.removeEventListener(resetEvent, onReset);
         }
       };
     },
