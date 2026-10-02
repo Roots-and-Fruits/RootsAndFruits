@@ -549,7 +549,10 @@ test("order actions stay visible through scrolling, steps, review, edit and dial
   await expectFixedActions(page);
   const footerLink = page
     .getByRole("contentinfo")
-    .getByRole("link", { name: "관리자", exact: true });
+    .getByRole("link", { name: "회원 로그인", exact: true });
+  await expect(
+    page.locator('a[href^="/namu-admin"], a[href^="/admin"]'),
+  ).toHaveCount(0);
   expect(
     (await footerLink.boundingBox())!.y +
       (await footerLink.boundingBox())!.height,

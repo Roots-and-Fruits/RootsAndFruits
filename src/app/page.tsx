@@ -47,7 +47,7 @@ export default function Home() {
             <h1 className="text-balance break-keep text-2xl font-semibold leading-[1.3] tracking-[-0.055em] sm:text-5xl sm:leading-[1.35]">
               산지에서 갓 수확한 신선함 그대로,
               <br />
-              동장에서 식탁으로 직배송!
+              농장에서 식탁으로 직배송!
             </h1>
             <p className="mt-3 max-w-sm text-sm leading-6 text-primary-foreground/70 sm:mt-6 sm:text-base sm:leading-7">
               농장에서 만난 싱그러움을 집으로 전해요.
