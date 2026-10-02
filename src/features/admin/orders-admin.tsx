@@ -1,4 +1,5 @@
 "use client";
+import { adminProductLabel } from "./schema";
 import { createRequestId } from "@/lib/request-id";
 import { useEffect, useState } from "react";
 import { AdminButton as Button } from "./admin-button";
@@ -101,8 +102,11 @@ export function OrdersAdmin({ section }: { section: string }) {
       await adminRequest(path, body);
       setNotice(message);
       reload();
+      return null;
     } catch (e) {
-      setError((e as Error).message);
+      const message = (e as Error).message;
+      setError(message);
+      return message;
     } finally {
       setBusy(false);
     }
@@ -255,7 +259,7 @@ export function OrdersAdmin({ section }: { section: string }) {
                 <option value="">전체</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id!}>
-                    {p.fruit_type} {p.weight_grams / 1000}kg · {p.description}
+                    {adminProductLabel(p)}
                   </option>
                 ))}
               </AdminSelect>
@@ -469,13 +473,18 @@ export function OrdersAdmin({ section }: { section: string }) {
             <OrderDetail
               order={detail}
               busy={busy}
+              onPay={(paymentMethod) =>
+                act(
+                  `orders/${detail.id}/pay`,
+                  { paymentMethod },
+                  "결제 완료를 기록했습니다.",
+                )
+              }
               onAction={(action) =>
                 act(
                   `orders/${detail.id}/${action}`,
                   {},
-                  action === "pay"
-                    ? "결제 완료를 기록했습니다."
-                    : "주문을 취소하고 차감 재고를 반환했습니다.",
+                  "주문을 취소하고 차감 재고를 반환했습니다.",
                 )
               }
               onReorder={() => {

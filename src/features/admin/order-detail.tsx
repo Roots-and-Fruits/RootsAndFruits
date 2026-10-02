@@ -2,18 +2,27 @@
 import { AdminButton as Button } from "./admin-button";
 import { AdminInput as Input } from "./admin-fields";
 import { ConfirmAction } from "./confirm-action";
-import { stateLabel, type Checkout } from "./schema";
+import {
+  paymentMethodLabels,
+  stateLabel,
+  type Checkout,
+  type PaymentMethod,
+} from "./schema";
 import { formatWon } from "@/features/orders/calculations";
+import { PaymentAction } from "./payment-action";
+import { ReorderNotice } from "./order-notes";
 export function OrderDetail({
   order: c,
   busy,
   onAction,
+  onPay,
   onReorder,
   onNote,
 }: {
   order: Checkout;
   busy: boolean;
   onAction: (action: string) => void;
+  onPay: (method: PaymentMethod) => Promise<string | null>;
   onReorder: () => void;
   onNote: (id: string, note: string) => void;
 }) {
@@ -34,6 +43,8 @@ export function OrderDetail({
     <div className="space-y-5 lg:text-sm">
       <p>
         {c.sender.name} · {c.sender.phone} · {stateLabel[c.status]}
+        {c.status === "paid" &&
+          ` · ${c.payment_method ? paymentMethodLabels[c.payment_method] : "결제 방식 미기록"}`}
       </p>
       <p className="text-sm text-muted-foreground">
         접수 구분:{" "}
@@ -45,11 +56,6 @@ export function OrderDetail({
               ? "관리자 재접수"
               : "비회원"}
       </p>
-      {c.original_id && (
-        <p className="text-sm text-muted-foreground">
-          재접수 주문{c.original_number ? ` · 원본 ${c.original_number}번` : ""}
-        </p>
-      )}
       <ul className="space-y-2 rounded-xl bg-secondary p-4">
         {[...aggregate].map(([id, i]) => (
           <li key={id} className="flex justify-between gap-4">
@@ -62,18 +68,15 @@ export function OrderDetail({
       </ul>
       <div className="space-y-2 text-right">
         <p>상품 합계 {formatWon(c.subtotal)}</p>
-        <p>묶음 할인 −{formatWon(c.discount)}</p>
+        {(c.category === "product" || c.discount > 0) && (
+          <p>묶음 할인 −{formatWon(c.discount)}</p>
+        )}
         <p className="text-2xl font-semibold">결제금액 {formatWon(c.total)}</p>
       </div>
       <div className="flex flex-wrap gap-3">
         {c.status === "pending" && (
           <>
-            <ConfirmAction
-              label="결제 완료"
-              disabled={busy}
-              description="POS에서 실제 결제가 완료되었나요? 기록 후에는 이 사이트에서 취소할 수 없습니다."
-              onConfirm={() => onAction("pay")}
-            />
+            <PaymentAction busy={busy} onConfirm={onPay} />
             <ConfirmAction
               label="결제 전 취소"
               disabled={busy}
@@ -107,9 +110,13 @@ export function OrderDetail({
                 .join(", ")}
             </p>
             <p className="text-sm">
-              상품 {formatWon(d.subtotal)} · 할인 {formatWon(d.discount)} · 합계{" "}
-              {formatWon(d.total)}
+              상품 {formatWon(d.subtotal)}{" "}
+              {(c.category === "product" || d.discount > 0) && (
+                <>· 할인 {formatWon(d.discount)} </>
+              )}
+              · 합계 {formatWon(d.total)}
             </p>
+            <ReorderNotice order={c} />
             <form
               className="flex gap-2"
               onSubmit={(e) => {

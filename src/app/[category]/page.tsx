@@ -18,7 +18,7 @@ export default async function CategoryPage({
   if (!isCatalogCategory(category)) notFound();
   const catalog = await getCatalog(category);
   return (
-    <div className="order-page">
+    <div className="order-page" data-order-category={category}>
       <SiteHeader compact />
       <main id="main-content">
         {catalog.status === "ready" && catalog.products.length > 0 ? (

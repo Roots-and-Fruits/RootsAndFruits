@@ -204,6 +204,7 @@ export function OrderEdit({
                   render={({ field, fieldState }) => (
                     <>
                       <ProductStep
+                        category={category}
                         products={products}
                         bundleDiscount={bundleDiscount}
                         items={field.value ?? delivery.items}

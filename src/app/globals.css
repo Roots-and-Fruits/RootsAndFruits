@@ -47,6 +47,20 @@
   --leaf: #91ad79;
 }
 
+/* Scope the product palette to its entry card or active customer flow.
+   The body selector also carries the palette into dialogs rendered in portals. */
+[data-order-category="product"],
+body:has(.order-page[data-order-category="product"]),
+body:has(.order-complete[data-order-category="product"]) {
+  --background: #fff8f0;
+  --foreground: #493528;
+  --primary: #a64b16;
+  --secondary: #fff0de;
+  --muted-foreground: #796557;
+  --accent: #ffd5a4;
+  --border: #ead7c3;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

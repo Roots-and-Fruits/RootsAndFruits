@@ -7,8 +7,8 @@ import type { CatalogCategory, Product } from "./types";
 const rowSchema = z.object({
   id: z.string(),
   category: z.enum(["product", "experience"]),
-  fruit_type: z.string(),
-  weight_grams: z.number().int().positive(),
+  fruit_type: z.string().nullable(),
+  weight_grams: z.number().int().positive().nullable(),
   description: z.string(),
   price: z.number().int().nonnegative(),
   inventory_enabled: z.boolean(),
@@ -68,11 +68,14 @@ export async function getCatalog(
     return {
       products,
       maxDeliveryDays: maxDays.success ? maxDays.data : 14,
-      bundleDiscount: z
-        .number()
-        .int()
-        .nonnegative()
-        .parse(settings.data?.bundle_discount),
+      bundleDiscount:
+        category === "experience"
+          ? 0
+          : z
+              .number()
+              .int()
+              .nonnegative()
+              .parse(settings.data?.bundle_discount),
       status: "ready",
     };
   } catch {

@@ -125,7 +125,7 @@ export function RecipientFields({
         <PhoneInput
           id={`${idPrefix}-phone`}
           label="받는 분 휴대폰 번호"
-          placeholder="01012345678"
+          placeholder="010-1234-5678"
           autoComplete="off"
           type="tel"
           readOnly={sameAsSender}
@@ -135,7 +135,7 @@ export function RecipientFields({
               : undefined
           }
           aria-describedby={sameAsSender ? `${idPrefix}-locked` : undefined}
-          {...register(path("phone"))}
+          name={path("phone")}
           error={error("phone")}
         />
       </div>

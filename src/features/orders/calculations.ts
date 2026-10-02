@@ -90,7 +90,9 @@ export function calculateDeliveryAmounts(
     throw new Error("할인 금액을 확인해주세요.");
   const subtotal = calculateSubtotal(items, products);
   const eligible = new Map(
-    products.filter((p) => p.bundleEligible).map((p) => [p.id, p]),
+    products
+      .filter((p) => p.category === "product" && p.bundleEligible)
+      .map((p) => [p.id, p]),
   );
   let count = 0,
     eligibleSubtotal = 0;

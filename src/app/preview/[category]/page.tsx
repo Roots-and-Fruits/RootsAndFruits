@@ -21,7 +21,7 @@ export default async function PreviewPage({
   const { category } = await params;
   if (!isCatalogCategory(category)) notFound();
   return (
-    <div className="order-page">
+    <div className="order-page" data-order-category={category}>
       <SiteHeader compact />
       <main id="main-content">
         <OrderWizard

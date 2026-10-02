@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 const entryCards = [
   {
     href: "/product",
+    category: "product",
     icon: Package,
     eyebrow: "01 / FARM SHOP",
     title: "상품 구매",
@@ -24,6 +25,7 @@ const entryCards = [
   },
   {
     href: "/experience",
+    category: "experience",
     icon: HandHeart,
     eyebrow: "02 / FARM EXPERIENCE",
     title: "체험 과일 보내기",
@@ -37,18 +39,17 @@ export default function Home() {
     <>
       <SiteHeader />
       <main id="main-content" className="mx-auto max-w-6xl px-5 pb-8 sm:px-10">
-        <section className="relative overflow-hidden rounded-[2rem] bg-primary px-7 py-12 text-primary-foreground sm:px-12 sm:py-16 lg:min-h-[360px]">
+        <section className="relative overflow-hidden rounded-[2rem] bg-primary px-6 py-6 text-primary-foreground sm:px-12 sm:py-16 lg:min-h-[360px]">
           <div className="relative z-10 max-w-xl">
-            <p className="mb-7 flex items-center gap-2 text-[10px] font-medium tracking-[0.26em] text-primary-foreground/65">
-              <span className="size-1.5 rounded-full bg-accent" /> A LITTLE FROM
-              OUR FARM
+            <p className="mb-7 hidden items-center gap-2 text-[10px] font-medium tracking-[0.26em] text-primary-foreground/65 sm:flex">
+              <span className="size-1.5 rounded-full bg-accent" /> TREE & BERRY FARM
             </p>
-            <h1 className="text-4xl font-semibold leading-[1.35] tracking-[-0.055em] sm:text-5xl">
-              좋은 과일에,
+            <h1 className="text-balance break-keep text-2xl font-semibold leading-[1.3] tracking-[-0.055em] sm:text-5xl sm:leading-[1.35]">
+              산지에서 갓 수확한 신선함 그대로,
               <br />
-              보내는 마음을 담아.
+              동장에서 식탁으로 직배송!
             </h1>
-            <p className="mt-6 max-w-sm text-sm leading-7 text-primary-foreground/70 sm:text-base">
+            <p className="mt-3 max-w-sm text-sm leading-6 text-primary-foreground/70 sm:mt-6 sm:text-base sm:leading-7">
               농장에서 만난 싱그러움을 집으로 전해요.
               <br />
               어떤 과일을 보내시나요?
@@ -64,39 +65,48 @@ export default function Home() {
           </div>
         </section>
         <section
-          className="mt-9 grid gap-4 sm:grid-cols-2"
+          className="mt-4 grid gap-3 sm:mt-9 sm:grid-cols-2 sm:gap-4"
           aria-label="주문 종류 선택"
         >
           {entryCards.map(
-            ({ href, icon: Icon, eyebrow, title, description, action }) => (
+            ({
+              href,
+              category,
+              icon: Icon,
+              eyebrow,
+              title,
+              description,
+              action,
+            }) => (
               <Link
                 key={href}
                 href={href}
-                className="group rounded-3xl border border-border bg-card p-7 transition-colors hover:border-primary/40 hover:bg-secondary/40 sm:p-8"
+                data-order-category={category}
+                className="group grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 rounded-3xl border border-primary/20 border-t-4 border-t-primary bg-secondary p-4 text-foreground transition-colors hover:border-primary/60 hover:bg-secondary/70 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary sm:block sm:p-8"
               >
-                <div className="mb-7 flex items-start justify-between">
-                  <span className="flex size-12 items-center justify-center rounded-2xl bg-secondary text-primary">
+                <div className="row-span-3 flex items-start justify-between sm:mb-7">
+                  <span className="flex size-8 items-center justify-center rounded-xl bg-primary text-primary-foreground sm:size-12 sm:rounded-2xl">
                     <Icon
-                      className="size-6"
+                      className="size-5 sm:size-6"
                       strokeWidth={1.5}
                       aria-hidden="true"
                     />
                   </span>
                   <ArrowUpRight
-                    className="size-5 text-muted-foreground transition-transform group-hover:-translate-y-1 group-hover:translate-x-1"
+                    className="hidden size-5 text-primary transition-transform group-hover:-translate-y-1 group-hover:translate-x-1 sm:block"
                     aria-hidden="true"
                   />
                 </div>
-                <p className="mb-2 text-[10px] font-semibold tracking-[0.2em] text-muted-foreground">
+                <p className="mb-2 hidden text-[10px] font-semibold tracking-[0.2em] text-muted-foreground sm:block">
                   {eyebrow}
                 </p>
-                <h2 className="text-2xl font-semibold tracking-[-0.04em]">
+                <h2 className="col-start-2 text-xl font-semibold tracking-[-0.04em] text-primary sm:text-2xl">
                   {title}
                 </h2>
-                <p className="mt-3 max-w-64 text-sm leading-6 text-muted-foreground">
+                <p className="col-start-2 mt-1 min-h-[2lh] text-sm leading-5 text-foreground/80 max-sm:break-keep sm:mt-3 sm:max-w-64 sm:leading-6">
                   {description}
                 </p>
-                <span className="mt-7 flex items-center gap-2 text-sm font-semibold text-primary">
+                <span className="col-start-2 mt-2 inline-flex items-center gap-2 text-sm font-semibold text-primary sm:mt-7 sm:min-h-11 sm:rounded-xl sm:bg-primary sm:px-4 sm:py-2.5 sm:text-primary-foreground">
                   {action}
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </span>

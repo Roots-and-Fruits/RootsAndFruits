@@ -162,13 +162,17 @@ export function OrderReview({
                   bundleDiscount,
                 ).subtotal,
               )}{" "}
-              · 묶음 할인 −
-              {formatWon(
-                calculateDeliveryAmounts(
-                  delivery.items,
-                  products,
-                  bundleDiscount,
-                ).discount,
+              {category === "product" && (
+                <>
+                  · 묶음 할인 −
+                  {formatWon(
+                    calculateDeliveryAmounts(
+                      delivery.items,
+                      products,
+                      bundleDiscount,
+                    ).discount,
+                  )}
+                </>
               )}
             </p>
             <p className="mt-4 text-right font-semibold tabular-nums">

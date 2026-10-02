@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ArrowUpRight, Sprout } from "lucide-react";
+import Image from "next/image";
+import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OrderGuideDialog } from "./order-guide-dialog";
 
@@ -16,11 +17,18 @@ export function SiteHeader({ compact = false }: { compact?: boolean }) {
         className="flex items-center gap-2.5 text-primary"
         aria-label="나무와열매 홈"
       >
-        <Sprout className="size-7" strokeWidth={1.7} aria-hidden="true" />
+        <Image
+          src="/brand/logo.svg"
+          alt=""
+          width={40}
+          height={40}
+          className="size-10 shrink-0"
+          unoptimized
+        />
         <span className="text-xl font-bold tracking-[-0.07em]">
           나무와열매
           <span className="mt-0.5 hidden text-[9px] font-medium tracking-[0.22em] sm:block">
-            ROOTS & FRUITS
+            TREE & BERRY
           </span>
         </span>
       </Link>

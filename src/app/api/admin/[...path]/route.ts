@@ -6,6 +6,7 @@ import { getStaff } from "@/features/admin/auth";
 import { readBody, apiError, checkDb, HttpError } from "@/features/admin/http";
 import {
   productSchema,
+  paymentSchema,
   settingsSchema,
   submitSchema,
   type Checkout,
@@ -183,7 +184,7 @@ export async function POST(request: Request, context: Context) {
             .array(
               z.object({
                 id: uuid,
-                fruit_type: z.string(),
+                fruit_type: z.string().nullable(),
                 sort_order: z.number().int(),
               }),
             )
@@ -217,9 +218,13 @@ export async function POST(request: Request, context: Context) {
         p_original: uuid.parse(path[1]),
       });
     } else if (path[0] === "orders") {
+      const action = z.enum(["pay", "cancel"]).parse(path[2]);
+      const paymentMethod =
+        action === "pay" ? paymentSchema.parse(body).paymentMethod : null;
       result = await db.rpc("change_checkout", {
         p_id: uuid.parse(path[1]),
-        p_action: z.enum(["pay", "cancel"]).parse(path[2]),
+        p_action: action,
+        p_payment_method: paymentMethod,
         p_actor: staff.id,
       });
     } else if (path[0] === "notes") {

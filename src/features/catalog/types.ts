@@ -3,8 +3,8 @@ export type CatalogCategory = "product" | "experience";
 export type Product = {
   id: string;
   category: CatalogCategory;
-  fruitType: string;
-  weightGrams: number;
+  fruitType: string | null;
+  weightGrams: number | null;
   description: string;
   price: number;
   inventoryEnabled: boolean;
@@ -46,13 +46,17 @@ export function isCatalogCategory(value: string): value is CatalogCategory {
 }
 
 export function productLabel(product: Product): string {
-  return `${product.fruitType} ${product.weightGrams / 1000}kg · ${product.description}`;
+  return product.category === "experience"
+    ? product.description
+    : `${product.fruitType} ${product.weightGrams! / 1000}kg · ${product.description}`;
 }
 
 export function isSoldOut(product: Product): boolean {
   return (
-    product.inventoryEnabled &&
-    product.stockQuantity !== null &&
-    product.stockQuantity <= 0
+    Boolean(product.unavailableReason) ||
+    (product.category === "product" &&
+      product.inventoryEnabled &&
+      product.stockQuantity !== null &&
+      product.stockQuantity <= 0)
   );
 }

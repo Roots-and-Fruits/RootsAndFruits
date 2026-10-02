@@ -1,5 +1,10 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type ReactNode,
+  type ComponentProps,
+} from "react";
 import {
   DndContext,
   PointerSensor,
@@ -19,14 +24,16 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 import { AdminButton as Button } from "./admin-button";
-import type { AdminProduct } from "./schema";
+import { adminProductLabel, type AdminProduct } from "./schema";
 import { formatWon } from "@/features/orders/calculations";
 
 type Group = { fruit: string; products: AdminProduct[] };
 export function groupProducts(products: AdminProduct[]): Group[] {
+  if (products[0]?.category === "experience")
+    return [{ fruit: "체험 상품", products }];
   const groups = new Map<string, AdminProduct[]>();
   for (const p of products)
-    groups.set(p.fruit_type, [...(groups.get(p.fruit_type) ?? []), p]);
+    groups.set(p.fruit_type!, [...(groups.get(p.fruit_type!) ?? []), p]);
   return [...groups].map(([fruit, products]) => ({ fruit, products }));
 }
 function SortableItem({
@@ -94,6 +101,17 @@ function SortableItem({
   );
 }
 
+function ProductGroup({
+  flat,
+  ...props
+}: ComponentProps<typeof SortableItem> & { flat: boolean }) {
+  return flat ? (
+    <div className="overflow-hidden rounded-xl border">{props.children}</div>
+  ) : (
+    <SortableItem {...props} />
+  );
+}
+
 function ReorderArea({
   ids,
   onMove,
@@ -135,6 +153,7 @@ function ReorderArea({
 }
 
 export function ProductSortList({
+  category,
   products,
   disabled,
   onDirtyChange,
@@ -142,6 +161,7 @@ export function ProductSortList({
   onReload,
   onEdit,
 }: {
+  category: AdminProduct["category"];
   products: AdminProduct[];
   disabled: boolean;
   onDirtyChange: (dirty: boolean) => void;
@@ -149,6 +169,7 @@ export function ProductSortList({
   onReload: () => Promise<void>;
   onEdit: (product: AdminProduct) => void;
 }) {
+  const experience = category === "experience";
   const initial = groupProducts(products);
   const [groups, setGroups] = useState(initial);
   const [busy, setBusy] = useState(false),
@@ -177,7 +198,11 @@ export function ProductSortList({
     <div className="space-y-4">
       <div className="sticky top-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 shadow-sm">
         <div className="text-sm">
-          <p>손잡이를 드래그해 과일 그룹과 그룹 안 상품 순서를 바꿔주세요.</p>
+          <p>
+            {experience
+              ? "손잡이를 드래그해 상품 순서를 바꿔주세요."
+              : "손잡이를 드래그해 과일 그룹과 그룹 안 상품 순서를 바꿔주세요."}
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {dirty
               ? "변경한 순서가 아직 저장되지 않았습니다. 저장하거나 취소한 뒤 상품을 편집해주세요."
@@ -247,7 +272,8 @@ export function ProductSortList({
       >
         <div className="space-y-4">
           {groups.map((g, gi) => (
-            <SortableItem
+            <ProductGroup
+              flat={experience}
               key={g.fruit}
               id={g.fruit}
               label={`${g.fruit} 그룹 순서 이동`}
@@ -273,17 +299,23 @@ export function ProductSortList({
                   <SortableItem
                     key={p.id}
                     id={p.id!}
-                    label={`${p.fruit_type} ${p.weight_grams / 1000}kg ${p.description} 순서 이동`}
+                    label={`${experience ? p.description : `${p.fruit_type} ${p.weight_grams! / 1000}kg ${p.description}`} 순서 이동`}
                     disabled={disabled || busy}
                   >
-                    <div className="grid min-w-0 flex-1 grid-cols-2 items-center gap-x-4 gap-y-2 text-sm lg:grid-cols-[minmax(0,1fr)_7rem_5rem_8rem_7rem]">
+                    <div
+                      className={`grid min-w-0 flex-1 grid-cols-2 items-center gap-x-4 gap-y-2 text-sm ${experience ? "lg:grid-cols-[minmax(0,1fr)_7rem_5rem]" : "lg:grid-cols-[minmax(0,1fr)_7rem_5rem_8rem_7rem]"}`}
+                    >
                       <div className="col-span-2 min-w-0 lg:col-span-1">
                         <h3 className="break-words font-semibold">
-                          {p.fruit_type} {p.weight_grams / 1000}kg
+                          {experience
+                            ? adminProductLabel(p)
+                            : `${p.fruit_type} ${p.weight_grams! / 1000}kg`}
                         </h3>
-                        <p className="mt-1 break-words text-muted-foreground">
-                          {p.description}
-                        </p>
+                        {!experience && (
+                          <p className="mt-1 break-words text-muted-foreground">
+                            {p.description}
+                          </p>
+                        )}
                       </div>
                       <p className="font-medium tabular-nums">
                         {formatWon(p.price)}
@@ -295,20 +327,26 @@ export function ProductSortList({
                       >
                         {p.is_active ? "판매 중" : "판매 중지"}
                       </p>
-                      <p
-                        className={
-                          (p.stock_quantity ?? 0) < 0
-                            ? "text-destructive"
-                            : "text-muted-foreground"
-                        }
-                      >
-                        {p.inventory_enabled
-                          ? `재고 ${p.stock_quantity ?? 0}개${(p.stock_quantity ?? 0) < 0 ? " · 초과 판매" : ""}`
-                          : "재고 관리 안 함"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {p.bundle_eligible ? "묶음 할인 대상" : "할인 비대상"}
-                      </p>
+                      {!experience && (
+                        <>
+                          <p
+                            className={
+                              p.inventory_enabled && (p.stock_quantity ?? 0) < 0
+                                ? "text-destructive"
+                                : "text-muted-foreground"
+                            }
+                          >
+                            {p.inventory_enabled
+                              ? `재고 ${p.stock_quantity ?? 0}개${(p.stock_quantity ?? 0) < 0 ? " · 초과 판매" : ""}`
+                              : "재고 관리 안 함"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {p.bundle_eligible
+                              ? "묶음 할인 대상"
+                              : "할인 비대상"}
+                          </p>
+                        </>
+                      )}
                     </div>
                     <Button
                       variant="outline"
@@ -320,7 +358,7 @@ export function ProductSortList({
                   </SortableItem>
                 ))}
               </ReorderArea>
-            </SortableItem>
+            </ProductGroup>
           ))}
         </div>
       </ReorderArea>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Check, Leaf, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { CategoryBadge } from "@/features/catalog/category-badge";
 import {
   Dialog,
   DialogClose,
@@ -320,12 +320,10 @@ function OrderWizardContent({
       )}
       <div className="grid items-start gap-4 sm:gap-8 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-14">
         <aside className="lg:sticky lg:top-8">
-          <Badge
-            variant="secondary"
-            className="mb-5 hidden rounded-full px-3 py-1.5 text-xs sm:inline-flex"
-          >
-            {content.label}
-          </Badge>
+          <CategoryBadge
+            category={category}
+            className="mb-5 hidden sm:inline-flex"
+          />
           <p className="hidden text-[10px] tracking-[0.2em] text-muted-foreground lg:block">
             {content.eyebrow}
           </p>
@@ -403,11 +401,14 @@ function OrderWizardContent({
             </p>
           </div>
         </aside>
-        <section className="min-w-0 rounded-3xl border border-border bg-card p-5 sm:p-9">
+        <section className="min-w-0 rounded-3xl border border-border border-t-4 border-t-primary bg-card p-5 sm:p-9">
           <div className="mb-5 sm:mb-8">
             <div className="mb-2 flex items-center justify-between gap-2 sm:mb-4">
               <p className="eyebrow">
-                <span className="sm:hidden">{content.label}</span>
+                <CategoryBadge
+                  category={category}
+                  className="px-2 py-1 sm:hidden"
+                />
                 <span className="hidden sm:inline">STEP 0{progress + 1}</span>
                 {step !== "sender" && step !== "review" && step !== "edit"
                   ? ` / 배송지 ${activeIndex + 1}`
@@ -526,6 +527,7 @@ function OrderWizardContent({
             )}
             {step === "products" && (
               <ProductStep
+                category={category}
                 products={products}
                 bundleDiscount={bundleDiscount}
                 items={delivery.items}

@@ -3,13 +3,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { formatWon } from "@/features/orders/calculations";
 import { AdminButton } from "./admin-button";
-import { stateLabel, type Checkout, type Shipment } from "./schema";
+import { OrderNotes } from "./order-notes";
+import {
+  paymentMethodLabels,
+  stateLabel,
+  type Checkout,
+  type Shipment,
+} from "./schema";
 
-const checkoutColumns = "lg:grid-cols-[6rem_9rem_minmax(0,1fr)_5rem_8rem_6rem]";
+const checkoutColumns = "lg:grid-cols-[6rem_9rem_minmax(0,1fr)_5rem_8rem_9rem]";
 const managementColumns =
-  "lg:grid-cols-[6rem_9rem_minmax(0,1fr)_5rem_8rem_6rem_10rem]";
+  "lg:grid-cols-[6rem_9rem_minmax(0,1fr)_5rem_8rem_9rem_10rem]";
 const shippingColumns =
-  "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_7rem_10rem_6rem]";
+  "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_7rem_12rem_6rem]";
 
 function OrderList({
   label,
@@ -43,11 +49,17 @@ function OrderList({
   );
 }
 
-function PaymentStatus({ status }: { status: Checkout["status"] }) {
+function PaymentStatus({
+  status,
+  method,
+}: {
+  status: Checkout["status"];
+  method: Checkout["payment_method"];
+}) {
   return (
     <span
       className={cn(
-        "inline-flex w-fit rounded-md px-2 py-1 text-xs font-medium",
+        "inline-flex w-fit items-center whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium",
         status === "paid"
           ? "bg-primary/10 text-primary"
           : status === "cancelled"
@@ -56,6 +68,9 @@ function PaymentStatus({ status }: { status: Checkout["status"] }) {
       )}
     >
       {stateLabel[status]}
+      {status === "paid" && (
+        <span> · {method ? paymentMethodLabels[method] : "방식 미기록"}</span>
+      )}
     </span>
   );
 }
@@ -90,7 +105,7 @@ export function CheckoutList({
             onClick={() => onOpen(order)}
             aria-label={`${order.order_number}번 ${order.sender.name} 주문 상세`}
             className={cn(
-              "grid w-full min-w-0 grid-cols-2 items-center gap-x-4 gap-y-2 break-words px-4 py-4 text-left text-sm transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring lg:gap-4 lg:py-3",
+              "grid w-full min-w-0 grid-cols-2 items-center gap-x-4 gap-y-1.5 break-words px-4 py-3 text-left text-sm transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring lg:gap-x-4 lg:gap-y-1.5 lg:py-2",
               columns,
             )}
           >
@@ -125,7 +140,10 @@ export function CheckoutList({
               {formatWon(order.total)}
             </span>
             <span className="justify-self-end lg:justify-self-start">
-              <PaymentStatus status={order.status} />
+              <PaymentStatus
+                status={order.status}
+                method={order.payment_method}
+              />
             </span>
             {!counter && (
               <span className="col-span-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground lg:col-span-1 lg:flex-col">
@@ -139,6 +157,12 @@ export function CheckoutList({
                     </span>
                   ) : null;
                 })}
+              </span>
+            )}
+            {(order.original_id ||
+              order.deliveries.some((d) => d.note.trim())) && (
+              <span className="col-span-full min-w-0 border-t border-dashed pt-1">
+                <OrderNotes order={order} />
               </span>
             )}
           </button>
@@ -175,7 +199,7 @@ export function ShippingList({
         <li key={d.id}>
           <article
             className={cn(
-              "grid min-w-0 gap-3 break-words px-4 py-4 text-sm lg:items-center lg:gap-4 lg:py-3",
+              "grid min-w-0 gap-2 break-words px-4 py-3 text-sm lg:items-center lg:gap-x-4 lg:gap-y-1.5 lg:py-2",
               shippingColumns,
             )}
           >
@@ -198,16 +222,14 @@ export function ShippingList({
               <p className="text-xs text-muted-foreground">
                 {d.recipient.address} {d.recipient.addressDetail}
               </p>
-              <p className="text-xs text-muted-foreground">
-                메모: {d.note || "없음"}
-              </p>
+              <OrderNotes order={c} delivery={d} />
             </div>
             <p className="tabular-nums">
               <span className="mr-2 text-muted-foreground lg:hidden">출발</span>
               {d.processing_date}
             </p>
-            <div className="flex flex-wrap items-center gap-2 lg:flex-col lg:items-start">
-              <PaymentStatus status={c.status} />
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <PaymentStatus status={c.status} method={c.payment_method} />
               <span className="text-xs text-muted-foreground">
                 {stateLabel[d.status]}
               </span>
@@ -217,7 +239,7 @@ export function ShippingList({
               className="justify-self-start lg:justify-self-end"
               onClick={() => onOpen(c)}
             >
-              상세·메모
+              상세
             </AdminButton>
           </article>
         </li>

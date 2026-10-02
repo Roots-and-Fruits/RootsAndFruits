@@ -46,8 +46,8 @@ export const previewProducts: Product[] = [
   {
     id: "preview-experience-3",
     category: "experience",
-    fruitType: "체험 감귤",
-    weightGrams: 3000,
+    fruitType: null,
+    weightGrams: null,
     description: "체험 과일 택배",
     price: 10000,
     inventoryEnabled: false,
@@ -56,9 +56,9 @@ export const previewProducts: Product[] = [
   {
     id: "preview-experience-5",
     category: "experience",
-    fruitType: "체험 감귤",
-    weightGrams: 5000,
-    description: "체험 과일 택배",
+    fruitType: null,
+    weightGrams: null,
+    description: "체험 과일 택배 · 큰 상자",
     price: 15000,
     inventoryEnabled: false,
     stockQuantity: null,

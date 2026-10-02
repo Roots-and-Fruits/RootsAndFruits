@@ -44,7 +44,9 @@ test("home and order entry have no horizontal overflow", async ({
 }, testInfo) => {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: /좋은 과일에,\s*보내는 마음을 담아\./ }),
+    page.getByRole("heading", {
+      name: /산지에서 갓 수확한 신선함 그대로,\s*동장에서 식탁으로 직배송!/,
+    }),
   ).toBeVisible();
   expect(
     await page.evaluate(
@@ -189,7 +191,7 @@ test("experience skips delivery date selection and draft has no automatic reset"
   await recipient(page, "체험수령인");
   await page
     .getByRole("button", {
-      name: "체험 감귤 3kg · 체험 과일 택배 수량 늘리기",
+      name: "체험 과일 택배 수량 늘리기",
       exact: true,
     })
     .click();
@@ -228,7 +230,7 @@ async function firstReview(page: Page, category = "product") {
       name:
         category === "product"
           ? "감귤 3kg · 선물용 · 대과 수량 늘리기"
-          : "체험 감귤 3kg · 체험 과일 택배 수량 늘리기",
+          : "체험 과일 택배 수량 늘리기",
       exact: true,
     })
     .click();
@@ -296,7 +298,7 @@ test("phone submit normalization, explicit consent, locked contact and postcode 
   await page.getByRole("checkbox", { name: "보내는 사람과 같아요" }).check();
   await expect(page.getByLabel("받는 분 이름")).toHaveAttribute("readonly", "");
   await expect(page.getByLabel("받는 분 휴대폰 번호")).toHaveValue(
-    "01012345678",
+    "010-1234-5678",
   );
   await expect(page.getByText(/직접 수정하려면 위 선택을 해제/)).toBeVisible();
   const lockedBackground = await page
@@ -327,7 +329,7 @@ test("phone submit normalization, explicit consent, locked contact and postcode 
   });
   await page.getByRole("button", { name: "이전", exact: true }).click();
   await expect(page.getByLabel("받는 분 휴대폰 번호")).toHaveValue(
-    "01098765432",
+    "010-9876-5432",
   );
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await postcode.click();
@@ -376,7 +378,7 @@ for (const category of ["product", "experience"]) {
         name:
           category === "product"
             ? "한라봉 3kg · 선물용 수량 늘리기"
-            : "체험 감귤 3kg · 체험 과일 택배 수량 늘리기",
+            : "체험 과일 택배 수량 늘리기",
         exact: true,
       })
       .click();
@@ -508,7 +510,7 @@ test("replacement input stays intact through validation and is normalized only o
   await expect(phone).toHaveValue("010-1234-5678 ");
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await page.getByRole("button", { name: "이전", exact: true }).click();
-  await expect(phone).toHaveValue("01012345678");
+  await expect(phone).toHaveValue("010-1234-5678");
 });
 
 async function expectFixedActions(page: Page) {
@@ -790,7 +792,7 @@ test("draft restores unfinished additional delivery and edit; cancel and reset r
     "새로고침 후 수정 중",
   );
   await expect(page.getByLabel("휴대폰 번호", { exact: true })).toHaveValue(
-    "010-2222-",
+    "010-2222",
   );
   await page.getByRole("button", { name: "취소", exact: true }).click();
   await page.reload();
@@ -978,4 +980,54 @@ test("scheduled calendar disables Sundays and dates outside the booking window",
   await expect(
     page.getByRole("region", { name: "배송지 1 주문 요약" }),
   ).toContainText(date);
+});
+
+test("phone hyphens follow typing, middle edits, separator deletion and draft restoration", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/preview/product");
+  const phone = page.getByLabel("휴대폰 번호", { exact: true });
+  await phone.pressSequentially("01012345678");
+  await expect(phone).toHaveValue("010-1234-5678");
+  await phone.evaluate((element) =>
+    (element as HTMLInputElement).setSelectionRange(5, 6),
+  );
+  await phone.pressSequentially("9");
+  await expect(phone).toHaveValue("010-1934-5678");
+  expect(
+    await phone.evaluate(
+      (element) => (element as HTMLInputElement).selectionStart,
+    ),
+  ).toBe(6);
+  await phone.evaluate((element) =>
+    (element as HTMLInputElement).setSelectionRange(4, 4),
+  );
+  await phone.press("Backspace");
+  await expect(phone).toHaveValue("011-9345-678");
+  expect(
+    await phone.evaluate(
+      (element) => (element as HTMLInputElement).selectionStart,
+    ),
+  ).toBe(2);
+  await phone.fill("01012345678");
+  await phone.evaluate((element) =>
+    (element as HTMLInputElement).setSelectionRange(3, 3),
+  );
+  await phone.press("Delete");
+  await expect(phone).toHaveValue("010-2345-678");
+  await phone.fill("");
+  await phone.pressSequentially("01012345678");
+  await page.reload();
+  await expect(phone).toHaveValue("010-1234-5678");
+  await page.screenshot({
+    path: testInfo.outputPath("phone-hyphens.png"),
+    fullPage: true,
+  });
+  await phone.fill("");
+  await phone.pressSequentially("010");
+  await phone.dispatchEvent("compositionstart");
+  await phone.fill("0101234");
+  await expect(phone).toHaveValue("0101234");
+  await phone.dispatchEvent("compositionend", { data: "1234" });
+  await expect(phone).toHaveValue("010-1234");
 });

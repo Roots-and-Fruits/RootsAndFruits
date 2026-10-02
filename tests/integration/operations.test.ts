@@ -30,7 +30,10 @@ const payload = (deliveries: ReturnType<typeof delivery>[]) => ({
   sender,
   deliveries,
 });
-async function setup() {
+async function setup(
+  includeExperienceMigration = true,
+  includePaymentMigration = true,
+) {
   const db = new PGlite();
   await db.exec(
     `create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text);create table auth.identities(user_id uuid references auth.users(id),provider text);create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;insert into auth.users(id) values('${staff}');`,
@@ -40,8 +43,15 @@ async function setup() {
     "202609260001_operations.sql",
     "202609260002_product_order.sql",
     "202609290001_customer_auth.sql",
+    "202610020001_experience_products.sql",
+    "202610020002_payment_method.sql",
   ])
-    await db.exec(await readFile(`supabase/migrations/${f}`, "utf8"));
+    if (
+      (includeExperienceMigration ||
+        f !== "202610020001_experience_products.sql") &&
+      (includePaymentMigration || f !== "202610020002_payment_method.sql")
+    )
+      await db.exec(await readFile(`supabase/migrations/${f}`, "utf8"));
   await db.query("select public.provision_staff(1::smallint,$1,$2,$3)", [
     staff,
     "owner",
@@ -114,7 +124,7 @@ test("Postgres: discount per delivery, immutable totals, retry, stock and cancel
       2,
     );
     await assert.rejects(
-      db.query("select change_checkout($1,'pay',$2)", [id, staff]),
+      db.query("select change_checkout($1,'pay',$2,'card')", [id, staff]),
     );
   } finally {
     await db.close();
@@ -147,7 +157,7 @@ test("Postgres: paid cancellation blocked, export transaction, shipment retry an
       ).rows[0].n,
       0,
     );
-    await db.query("select change_checkout($1,'pay',$2)", [c, staff]);
+    await db.query("select change_checkout($1,'pay',$2,'card')", [c, staff]);
     const rows = await db.query<{
       result: {
         delivery: { order_items: { quantity: number; label: string }[] };
@@ -156,7 +166,7 @@ test("Postgres: paid cancellation blocked, export transaction, shipment retry an
     assert.equal(rows.rows[0].result[0].delivery.order_items[0].quantity, 2);
     assert.match(rows.rows[0].result[0].delivery.order_items[0].label, /3kg/);
 
-    await db.query("select change_checkout($1,'pay',$2)", [c, staff]);
+    await db.query("select change_checkout($1,'pay',$2,'card')", [c, staff]);
     await assert.rejects(
       db.query("select change_checkout($1,'cancel',$2)", [c, staff]),
     );
@@ -476,6 +486,11 @@ test("Postgres: grouped product ordering, append, stale saves and role protectio
     await saved(last, {
       ...original,
       category: "experience",
+      fruit_type: null,
+      weight_grams: null,
+      description: "체험 택배",
+      inventory_enabled: false,
+      bundle_eligible: false,
       stock_quantity: null,
     });
     assert.equal(
@@ -653,6 +668,364 @@ test("Postgres: customer ownership, tablet provisioning, retries and RLS", async
       }
       await db.exec("reset role");
     }
+  } finally {
+    await db.close();
+  }
+});
+
+test("Postgres: experience has no fruit, weight, stock deduction or discount; flat sorting and reorder", async () => {
+  const db = await setup();
+  try {
+    const data = {
+      category: "experience",
+      description: "체험 택배",
+      price: 10000,
+      is_active: true,
+    };
+    const save = async (id: string | null, value: object) =>
+      (
+        await db.query<{ id: string }>(
+          "select save_product($1,$2::jsonb,$3) id",
+          [id, JSON.stringify(value), staff],
+        )
+      ).rows[0].id;
+    const first = await save(null, data);
+    const second = await save(null, { ...data, description: "큰 상자" });
+    for (const invalid of [
+      { fruit_type: "감귤" },
+      { weight_grams: 3000 },
+      { inventory_enabled: true },
+      { bundle_eligible: true },
+      { description: " " },
+    ]) {
+      await assert.rejects(save(first, { ...data, ...invalid }));
+    }
+    await assert.rejects(save(null, { ...data, category: "product" }));
+    const snapshot = async () =>
+      (
+        await db.query<{ id: string; fruit_type: null; sort_order: number }>(
+          "select id,fruit_type,sort_order from products where category='experience' order by sort_order,id",
+        )
+      ).rows;
+    const expected = await snapshot();
+    await db.query("select reorder_products('experience',$1,$2::jsonb,$3)", [
+      [second, first],
+      JSON.stringify(expected),
+      staff,
+    ]);
+    assert.deepEqual(
+      (await snapshot()).map((p) => p.id),
+      [second, first],
+    );
+    const third = await save(null, { ...data, description: "추가 상자" });
+    assert.deepEqual(
+      (await snapshot()).map((p) => p.id),
+      [second, first, third],
+    );
+    await assert.rejects(
+      db.query("select reorder_products('experience',$1,$2::jsonb,$3)", [
+        [first, second],
+        JSON.stringify(expected),
+        staff,
+      ]),
+    );
+    const order = {
+      ...payload([delivery([{ productId: first, quantity: 3 }])]),
+      category: "experience",
+    };
+    const key = crypto.randomUUID();
+    const submit = () =>
+      db.query<{ result: { total: number } }>(
+        "select submit_customer_checkout($1,$2::jsonb) result",
+        [key, JSON.stringify(order)],
+      );
+    assert.equal((await submit()).rows[0].result.total, 30000);
+    await submit();
+    assert.deepEqual(
+      (
+        await db.query(
+          "select label,weight_grams,bundle_eligible,inventory_deducted from order_items",
+        )
+      ).rows,
+      [
+        {
+          label: "체험 택배",
+          weight_grams: null,
+          bundle_eligible: false,
+          inventory_deducted: false,
+        },
+      ],
+    );
+    assert.deepEqual(
+      (await db.query("select discount_unit,discount::int from deliveries"))
+        .rows,
+      [{ discount_unit: 0, discount: 0 }],
+    );
+    assert.equal(
+      (await db.query("select * from stock_movements")).rows.length,
+      0,
+    );
+    const original = (
+      await db.query<{ id: string }>("select id from checkouts")
+    ).rows[0].id;
+    await db.query("select submit_checkout($1,$2::jsonb,$3,$4)", [
+      crypto.randomUUID(),
+      JSON.stringify(order),
+      staff,
+      original,
+    ]);
+    await db.query("select change_checkout($1,'cancel',$2)", [original, staff]);
+    assert.equal(
+      (await db.query("select * from stock_movements")).rows.length,
+      0,
+    );
+    await save(first, {
+      ...data,
+      category: "product",
+      fruit_type: "감귤",
+      weight_grams: 3000,
+    });
+    assert.equal(
+      (
+        await db.query<{ label: string }>(
+          "select label from order_items limit 1",
+        )
+      ).rows[0].label,
+      "체험 택배",
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+test("Postgres: experience migration normalizes catalog but preserves existing order snapshots", async () => {
+  const db = await setup(false);
+  try {
+    await db.exec(
+      `update products set category='experience',description='체험 택배' where id='${p1}'`,
+    );
+    const order = {
+      ...payload([delivery([{ productId: p1, quantity: 2 }])]),
+      category: "experience",
+    };
+    await db.query("select submit_checkout($1,$2::jsonb)", [
+      crypto.randomUUID(),
+      JSON.stringify(order),
+    ]);
+    const snapshots = async () => ({
+      checkouts: (await db.query("select * from checkouts")).rows,
+      deliveries: (await db.query("select * from deliveries")).rows,
+      items: (await db.query("select * from order_items")).rows,
+    });
+    const before = await snapshots();
+    await db.exec(
+      await readFile(
+        "supabase/migrations/202610020001_experience_products.sql",
+        "utf8",
+      ),
+    );
+    assert.deepEqual(await snapshots(), before);
+    assert.deepEqual(
+      (
+        await db.query(
+          "select fruit_type,weight_grams,inventory_enabled,bundle_eligible from products where id=$1",
+          [p1],
+        )
+      ).rows,
+      [
+        {
+          fruit_type: null,
+          weight_grams: null,
+          inventory_enabled: false,
+          bundle_eligible: false,
+        },
+      ],
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+test("Postgres: payment methods, validation, retries, permissions and historical migration", async () => {
+  const db = await setup(true, false);
+  try {
+    const create = async () => {
+      const requestId = crypto.randomUUID();
+      await db.query("select submit_checkout($1,$2::jsonb)", [
+        requestId,
+        JSON.stringify(payload([delivery([{ productId: p2, quantity: 1 }])])),
+      ]);
+      return (
+        await db.query<{ id: string }>(
+          "select id from checkouts where request_id=$1",
+          [requestId],
+        )
+      ).rows[0].id;
+    };
+    const legacy = await create();
+    await db.query("select change_checkout($1,'pay',$2)", [legacy, staff]);
+    const before = (
+      await db.query<Record<string, unknown>>(
+        "select * from checkouts where id=$1",
+        [legacy],
+      )
+    ).rows[0];
+    await db.exec(
+      await readFile(
+        "supabase/migrations/202610020002_payment_method.sql",
+        "utf8",
+      ),
+    );
+    assert.deepEqual(
+      (
+        await db.query<Record<string, unknown>>(
+          "select * from checkouts where id=$1",
+          [legacy],
+        )
+      ).rows[0],
+      { ...before, payment_method: null },
+    );
+    await db.query("select change_checkout($1,'pay',$2,'card')", [
+      legacy,
+      staff,
+    ]);
+    assert.equal(
+      (
+        await db.query<{ payment_method: string | null }>(
+          "select payment_method from checkouts where id=$1",
+          [legacy],
+        )
+      ).rows[0].payment_method,
+      null,
+    );
+
+    for (const method of ["card", "cash", "transfer", "other"]) {
+      const id = await create();
+      for (const invalid of [null, "", "bitcoin", "CARD"]) {
+        await assert.rejects(
+          db.query("select change_checkout($1,'pay',$2,$3)", [
+            id,
+            staff,
+            invalid,
+          ]),
+          /결제 방식을 선택/,
+        );
+      }
+      await assert.rejects(
+        db.query("select change_checkout($1,'pay',$2)", [id, staff]),
+        /결제 방식을 선택/,
+      );
+      await assert.rejects(
+        db.query("select change_checkout($1,'pay',$2,$3)", [
+          id,
+          crypto.randomUUID(),
+          method,
+        ]),
+      );
+      assert.deepEqual(
+        (
+          await db.query(
+            "select status,paid_at,payment_method from checkouts where id=$1",
+            [id],
+          )
+        ).rows[0],
+        { status: "pending", paid_at: null, payment_method: null },
+      );
+      await db.query("select change_checkout($1,'pay',$2,$3)", [
+        id,
+        staff,
+        method,
+      ]);
+      const paid = (
+        await db.query<Record<string, unknown>>(
+          "select * from checkouts where id=$1",
+          [id],
+        )
+      ).rows[0];
+      assert.equal(paid.status, "paid");
+      assert.equal(paid.payment_method, method);
+      assert.ok(paid.paid_at);
+      // Same or different subsequent selections must preserve the first payment.
+      await Promise.all(
+        [method, "other", "card"].map((value) =>
+          db.query("select change_checkout($1,'pay',$2,$3)", [
+            id,
+            staff,
+            value,
+          ]),
+        ),
+      );
+      assert.deepEqual(
+        (
+          await db.query<Record<string, unknown>>(
+            "select * from checkouts where id=$1",
+            [id],
+          )
+        ).rows[0],
+        paid,
+      );
+      assert.equal(
+        (
+          await db.query<{ n: number }>(
+            "select count(*)::int n from staff_events where target_id=$1 and action='pay'",
+            [id],
+          )
+        ).rows[0].n,
+        1,
+      );
+      await assert.rejects(
+        db.query("select change_checkout($1,'cancel',$2)", [id, staff]),
+      );
+      const listed = await db.query<{
+        result: { orders: { payment_method: string }[] };
+      }>("select list_checkouts($1,0,$2) result", [
+        JSON.stringify({ id }),
+        staff,
+      ]);
+      assert.equal(listed.rows[0].result.orders[0].payment_method, method);
+    }
+    const cancelled = await create();
+    await assert.rejects(
+      db.query("update checkouts set payment_method='cash' where id=$1", [
+        cancelled,
+      ]),
+    );
+    await db.query("select change_checkout($1,'cancel',$2)", [
+      cancelled,
+      staff,
+    ]);
+    await assert.rejects(
+      db.query("select change_checkout($1,'pay',$2,'cash')", [
+        cancelled,
+        staff,
+      ]),
+      /결제 대기 주문만/,
+    );
+    assert.equal(
+      (
+        await db.query<{ payment_method: string | null }>(
+          "select payment_method from checkouts where id=$1",
+          [cancelled],
+        )
+      ).rows[0].payment_method,
+      null,
+    );
+    for (const role of ["anon", "authenticated"]) {
+      await db.exec(`set role ${role}`);
+      await assert.rejects(
+        db.query("select change_checkout($1,'pay',$2,'card')", [legacy, staff]),
+        /permission denied/,
+      );
+      await db.exec("reset role");
+    }
+    assert.equal(
+      (
+        await db.query<{ allowed: boolean }>(
+          "select has_function_privilege('service_role', 'public.change_checkout(uuid,text,uuid,text)', 'EXECUTE') allowed",
+        )
+      ).rows[0].allowed,
+      true,
+    );
   } finally {
     await db.close();
   }

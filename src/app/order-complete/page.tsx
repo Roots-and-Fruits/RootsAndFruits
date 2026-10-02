@@ -5,6 +5,10 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/site/site-header";
 import { formatWon } from "@/features/orders/calculations";
+import { completionSettings } from "@/features/orders/completion-settings";
+import { CategoryBadge } from "@/features/catalog/category-badge";
+import { isCatalogCategory } from "@/features/catalog/types";
+import { CompletionHomeRedirect } from "@/features/orders/components/completion-home-redirect";
 const subscribe = () => () => {};
 const snapshot = getReceipt;
 export default function OrderComplete() {
@@ -19,12 +23,15 @@ export default function OrderComplete() {
     receipt = raw ? JSON.parse(raw) : null;
   } catch {}
   return (
-    <>
+    <div className="order-complete" data-order-category={receipt?.category}>
       <SiteHeader />
       <main
         id="main-content"
         className="mx-auto max-w-xl px-5 py-14 text-center"
       >
+        {receipt && isCatalogCategory(receipt.category) && (
+          <CategoryBadge category={receipt.category} className="mb-4" />
+        )}
         <h1 className="text-3xl font-semibold">
           {receipt ? "주문이 접수되었어요." : "주문 접수 안내"}
         </h1>
@@ -38,6 +45,26 @@ export default function OrderComplete() {
             <p className="my-6 text-muted-foreground">
               아직 결제 전이에요. 카운터에서 결제를 진행해주세요.
             </p>
+            <section
+              aria-labelledby="bank-transfer-title"
+              className="mb-6 rounded-2xl border bg-secondary/50 p-5"
+            >
+              <h2 id="bank-transfer-title" className="font-semibold">
+                계좌송금 안내
+              </h2>
+              <p className="mt-3 text-sm">
+                {completionSettings.bankTransfer.bank}
+              </p>
+              <p className="mt-1 select-all text-xl font-bold tabular-nums text-primary">
+                {completionSettings.bankTransfer.accountNumber}
+              </p>
+              <p className="mt-2 text-sm">
+                예금주: {completionSettings.bankTransfer.accountHolder}
+              </p>
+              <p className="mt-3 text-sm text-muted-foreground">
+                송금 후 카운터에 알려주세요.
+              </p>
+            </section>
             {receipt.storageWarning && (
               <p role="alert" className="my-4 text-sm text-destructive">
                 브라우저 저장소를 사용할 수 없어요. 이 화면을 나가기 전에
@@ -57,6 +84,7 @@ export default function OrderComplete() {
             >
               다음 주문 시작
             </Button>
+            <CompletionHomeRedirect key={raw} />
           </>
         ) : (
           <p className="mt-6">
@@ -64,10 +92,14 @@ export default function OrderComplete() {
             문의해주세요.
           </p>
         )}
-        <Link href="/" className="mt-6 inline-block underline">
+        <Link
+          href="/"
+          onClick={clearReceipt}
+          className="mt-6 inline-block underline"
+        >
           시작 화면
         </Link>
       </main>
-    </>
+    </div>
   );
 }

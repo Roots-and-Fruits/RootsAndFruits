@@ -9,18 +9,38 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { adminRequest } from "./client";
 import {
   productSchema,
+  productFieldsSchema,
   settingsSchema,
   type AdminProduct,
   type Settings,
 } from "./schema";
 import { ProductSortList } from "./product-sort-list";
-const productFormSchema = productSchema.omit({ weight_grams: true }).extend({
-  weight_kg: z
-    .number({ invalid_type_error: "중량을 입력해주세요." })
-    .min(0.001, "중량은 0보다 커야 합니다.")
-    .max(1000, "중량은 1,000kg 이하로 입력해주세요.")
-    .multipleOf(0.001, "중량은 소수점 셋째 자리까지 입력해주세요."),
-});
+const productFormSchema = productFieldsSchema
+  .omit({ weight_grams: true })
+  .extend({
+    weight_kg: z
+      .number({ invalid_type_error: "중량을 입력해주세요." })
+      .min(0.001, "중량은 0보다 커야 합니다.")
+      .max(1000, "중량은 1,000kg 이하로 입력해주세요.")
+      .multipleOf(0.001, "중량은 소수점 셋째 자리까지 입력해주세요.")
+      .nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const result = productSchema.safeParse({
+      ...value,
+      weight_grams:
+        value.weight_kg === null ? null : Math.round(value.weight_kg * 1000),
+    });
+    if (!result.success)
+      for (const issue of result.error.issues) {
+        ctx.addIssue({
+          ...issue,
+          path: issue.path.map((part) =>
+            part === "weight_grams" ? "weight_kg" : part,
+          ),
+        });
+      }
+  });
 type ProductFormValues = z.infer<typeof productFormSchema>;
 const emptyProduct: AdminProduct = {
   id: null,
@@ -112,7 +132,13 @@ export function CatalogAdmin({ section }: { section: string }) {
             <Button
               disabled={sorting || !!editing}
               onClick={() => {
-                setEditing({ ...emptyProduct, category });
+                setEditing({
+                  ...emptyProduct,
+                  category,
+                  ...(category === "experience"
+                    ? { fruit_type: null, weight_grams: null }
+                    : {}),
+                });
                 setNotice("");
               }}
             >
@@ -138,6 +164,7 @@ export function CatalogAdmin({ section }: { section: string }) {
             products={products.filter(
               (p) => p.category === category && !p.is_deleted,
             )}
+            category={category}
             disabled={!!editing}
             onDirtyChange={setSorting}
             onEdit={(p) => {
@@ -184,7 +211,7 @@ function ProductForm({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       ...value,
-      weight_kg: value.weight_grams / 1000,
+      weight_kg: value.weight_grams === null ? null : value.weight_grams / 1000,
       stock_quantity: null,
     },
   });
@@ -199,7 +226,8 @@ function ProductForm({
           const { weight_kg, ...product } = v;
           await onSave({
             ...product,
-            weight_grams: Math.round(weight_kg * 1000),
+            weight_grams:
+              weight_kg === null ? null : Math.round(weight_kg * 1000),
             stock_quantity: product.inventory_enabled
               ? product.stock_quantity
               : null,
@@ -215,28 +243,43 @@ function ProductForm({
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-x-5 lg:gap-y-4">
         <label className="flex flex-col gap-2.5 text-sm font-medium lg:gap-1.5">
           <span>상품 구분</span>
-          <AdminSelect {...register("category")}>
+          <AdminSelect
+            {...register("category")}
+            onChange={(event) => {
+              const category = event.target.value as AdminProduct["category"];
+              setValue("category", category);
+              setValue("fruit_type", category === "experience" ? null : "");
+              setValue("weight_kg", category === "experience" ? null : 3);
+              setValue("inventory_enabled", false);
+              setValue("bundle_eligible", false);
+              setValue("stock_quantity", null);
+            }}
+          >
             <option value="product">일반</option>
             <option value="experience">체험</option>
           </AdminSelect>
         </label>
-        <LabeledInput
-          id="fruit"
-          label="과일 종류"
-          {...register("fruit_type")}
-          error={errors.fruit_type?.message}
-        />
-        <LabeledInput
-          id="weight"
-          label="중량 (kg)"
-          type="number"
-          inputMode="decimal"
-          min="0.001"
-          max="1000"
-          step="0.001"
-          {...register("weight_kg", { valueAsNumber: true })}
-          error={errors.weight_kg?.message}
-        />
+        {current.category === "product" && (
+          <>
+            <LabeledInput
+              id="fruit"
+              label="과일 종류"
+              {...register("fruit_type")}
+              error={errors.fruit_type?.message}
+            />
+            <LabeledInput
+              id="weight"
+              label="중량 (kg)"
+              type="number"
+              inputMode="decimal"
+              min="0.001"
+              max="1000"
+              step="0.001"
+              {...register("weight_kg", { valueAsNumber: true })}
+              error={errors.weight_kg?.message}
+            />
+          </>
+        )}
         <div className="sm:col-span-2 lg:col-span-3">
           <LabeledInput
             id="desc"
@@ -260,29 +303,33 @@ function ProductForm({
             ["inventory_enabled", "재고 관리"],
             ["bundle_eligible", "묶음 배송 할인 대상"],
           ] as const
-        ).map(([key, label]) => (
-          <label key={key} className="flex items-center gap-2">
-            <Checkbox
-              checked={current[key]}
-              onCheckedChange={(v) => {
-                setValue(key, v === true);
-                if (key === "inventory_enabled" && v !== true) {
-                  setValue("stock_quantity", null, { shouldValidate: true });
-                }
-              }}
-            />
-            {label}
-          </label>
-        ))}
+        )
+          .filter(
+            ([key]) => current.category === "product" || key === "is_active",
+          )
+          .map(([key, label]) => (
+            <label key={key} className="flex items-center gap-2">
+              <Checkbox
+                checked={current[key]}
+                onCheckedChange={(v) => {
+                  setValue(key, v === true);
+                  if (key === "inventory_enabled" && v !== true) {
+                    setValue("stock_quantity", null, { shouldValidate: true });
+                  }
+                }}
+              />
+              {label}
+            </label>
+          ))}
       </div>
-      {current.inventory_enabled && (
+      {current.category === "product" && current.inventory_enabled && (
         <div className="max-w-md space-y-2 rounded-lg bg-secondary/50 p-4">
           <LabeledInput
             id="stock"
             label={`재고 수량 변경 (현재 ${value.stock_quantity ?? 0}개 · 비우면 유지)`}
             type="number"
             {...register("stock_quantity", {
-              setValueAs: (v) => (v === "" ? null : Number(v)),
+              setValueAs: (v) => (v == null || v === "" ? null : Number(v)),
             })}
             error={errors.stock_quantity?.message}
           />
@@ -356,8 +403,8 @@ function SettingsForm({
           error={errors.bundle_discount?.message}
         />
         <p className="text-sm text-muted-foreground">
-          일반·체험 공통. 0원은 할인 없음. 배송지마다 계산하며 발송 수량은
-          줄이지 않습니다.
+          일반 상품에만 적용합니다. 0원은 할인 없음. 배송지마다 계산하며 발송
+          수량은 줄이지 않습니다.
         </p>
       </div>
       <div className="space-y-3">

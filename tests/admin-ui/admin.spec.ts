@@ -59,7 +59,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   await page.getByLabel("중량 (kg)", { exact: true }).fill("2.5");
   await expect(page.getByLabel(/재고 수량 변경/)).toHaveCount(0);
   await page.getByRole("checkbox", { name: "재고 관리", exact: true }).check();
-  await page.getByLabel(/재고 수량 변경/).fill("15");
+  await page.getByLabel(/재고 수량 변경/).fill("-2");
   await page
     .getByLabel("과일 종류", { exact: true })
     .fill(`테스트${testInfo.project.name}`);
@@ -74,7 +74,10 @@ test("admin boundaries, product settings and real order lifecycle against isolat
     .locator("article")
     .filter({ hasText: `테스트${testInfo.project.name} 2.5kg` });
   await expect(productCard).toContainText("판매 중");
-  await expect(productCard).toContainText("재고 15개");
+  await expect(productCard).toContainText("재고 -2개 · 초과 판매");
+  await expect(
+    productCard.getByText("재고 -2개 · 초과 판매", { exact: true }),
+  ).toHaveClass(/text-destructive/);
   await productCard.getByRole("button", { name: "수정", exact: true }).click();
   await expect(page.getByLabel("중량 (kg)", { exact: true })).toHaveValue(
     "2.5",
@@ -86,11 +89,23 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   await expect(page.getByLabel(/재고 수량 변경/)).toHaveCount(0);
   await page.getByRole("button", { name: "저장", exact: true }).click();
   await expect(productCard).toContainText("재고 관리 안 함");
+  await expect(
+    productCard.getByText("재고 관리 안 함", { exact: true }),
+  ).not.toHaveClass(/text-destructive/);
+  await page.reload();
+  await expect(
+    productCard.getByText("재고 관리 안 함", { exact: true }),
+  ).not.toHaveClass(/text-destructive/);
   await productCard.getByRole("button", { name: "수정", exact: true }).click();
   await page.getByRole("checkbox", { name: "재고 관리", exact: true }).check();
   await expect(page.getByLabel(/재고 수량 변경/)).toHaveAccessibleName(
-    /현재 15개/,
+    /현재 -2개/,
   );
+  await page.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(
+    productCard.getByText("재고 -2개 · 초과 판매", { exact: true }),
+  ).toHaveClass(/text-destructive/);
+  await productCard.getByRole("button", { name: "수정", exact: true }).click();
   await page.screenshot({
     path: testInfo.outputPath("admin-product-form.png"),
     fullPage: true,
@@ -172,7 +187,21 @@ test("admin boundaries, product settings and real order lifecycle against isolat
     })
     .click();
   await expect(page.getByText("결제금액 87,000원")).toBeVisible();
+  const originalNote = "현금영수증 요청 · 도착 전 연락";
+  await page
+    .getByLabel("배송지 1 운영 메모", { exact: true })
+    .fill(originalNote);
+  await page.getByRole("button", { name: "메모 저장", exact: true }).click();
+  const originalRow = page.getByRole("button", {
+    name: new RegExp(`^${result.data.orderNumber}번 고객`),
+  });
+  await expect(originalRow).toContainText(
+    `배송지 1 · 받는분 메모: ${originalNote}`,
+  );
+  await expect(originalRow).not.toContainText("재접수");
+  await originalRow.click();
   await page.getByRole("button", { name: "결제 완료", exact: true }).click();
+  await page.getByRole("radio", { name: "카드", exact: true }).check();
   await page.getByRole("button", { name: "확인", exact: true }).click();
   await expect(page.getByText("결제 완료를 기록했습니다.")).toBeVisible();
   await page.getByRole("link", { name: "발송 관리", exact: true }).click();
@@ -185,11 +214,14 @@ test("admin boundaries, product settings and real order lifecycle against isolat
     .fill(String(result.data.orderNumber));
   await page.getByRole("button", { name: "검색", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "상세·메모", exact: true }),
+    page.getByRole("button", { name: "상세", exact: true }),
   ).toHaveCount(1);
   await expect(
     page.getByText(`${result.data.orderNumber}번 · 받는분`, { exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "배송지별 발송 목록" }),
+  ).toContainText(originalNote);
   await page.getByRole("button", { name: "출력 대기 전체 선택" }).click();
   const download = page.waitForEvent("download");
   await page
@@ -220,7 +252,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   await page
     .locator("article")
     .filter({ hasText: `${result.data.orderNumber}번 · 받는분` })
-    .getByRole("button", { name: "상세·메모", exact: true })
+    .getByRole("button", { name: "상세", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "결제 전 취소", exact: true }),
@@ -289,11 +321,44 @@ test("admin boundaries, product settings and real order lifecycle against isolat
     .getByLabel("주문번호", { exact: true })
     .fill(String(reordered.orderNumber));
   await page.getByRole("button", { name: "검색", exact: true }).click();
+  const reorderedRow = page.getByRole("button", {
+    name: new RegExp(`^${reordered.orderNumber}번 고객`),
+  });
+  const reorderNotice = `재접수 · 원본 ${result.data.orderNumber}번`;
+  await expect(reorderedRow).toContainText(reorderNotice);
+  await reorderedRow.click();
+  await expect(
+    page.getByLabel("배송지 1 운영 메모", { exact: true }),
+  ).toHaveValue("");
+  await expect(page.getByRole("dialog")).toContainText(reorderNotice);
+  const reorderNote = "주소 변경 확인 · " + "긴메모".repeat(30);
   await page
-    .getByRole("button", {
-      name: new RegExp(`^${reordered.orderNumber}번 고객`),
-    })
-    .click();
+    .getByLabel("배송지 1 운영 메모", { exact: true })
+    .fill(reorderNote);
+  await page.getByRole("button", { name: "메모 저장", exact: true }).click();
+  await expect(reorderedRow).toContainText(reorderNotice);
+  await expect(reorderedRow).toContainText(reorderNote);
+  await page.screenshot({
+    path: testInfo.outputPath("counter-reorder-note.png"),
+    fullPage: true,
+  });
+  await page.getByRole("link", { name: "발송 관리", exact: true }).click();
+  await page
+    .getByLabel("주문번호", { exact: true })
+    .fill(String(reordered.orderNumber));
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  const shippingRow = page
+    .getByRole("region", { name: "배송지별 발송 목록" })
+    .getByRole("article")
+    .filter({
+      hasText: new RegExp(`^${reordered.orderNumber}번 · 재접수 수령인`),
+    });
+  await expect(shippingRow).toContainText(reorderNotice);
+  await expect(shippingRow).toContainText(reorderNote);
+  await shippingRow.getByRole("button", { name: "상세", exact: true }).click();
+  await expect(
+    page.getByLabel("배송지 1 운영 메모", { exact: true }),
+  ).toHaveValue(reorderNote);
   await page.getByRole("button", { name: "결제 전 취소", exact: true }).click();
   await page.getByRole("button", { name: "확인", exact: true }).click();
   await expect(
@@ -304,6 +369,13 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   await expect(list.getByRole("button").first()).toHaveAccessibleName(
     new RegExp(`^${reordered.orderNumber}번`),
   );
+  await expect(list.getByRole("button").first()).toContainText(reorderNotice);
+  await expect(list.getByRole("button").first()).toContainText(reorderNote);
+  await expect(
+    list.getByRole("button", {
+      name: new RegExp(`^${result.data.orderNumber}번 고객`),
+    }),
+  ).toContainText(originalNote);
   const listRows = list.getByRole("listitem");
   expect(await listRows.count()).toBeGreaterThanOrEqual(2);
   const firstRow = await listRows.nth(0).boundingBox();
@@ -487,7 +559,7 @@ test("drag product and fruit group order, cancel and persist by category", async
 }, testInfo) => {
   await login(page);
   const fruit = `정렬${testInfo.project.name}`;
-  // Independent category keeps this test separate from lifecycle fixtures.
+  // Unique fruit groups keep this test separate from lifecycle fixtures.
   for (const [fruit_type, weight_grams] of [
     [fruit, 3000],
     [fruit, 5000],
@@ -501,7 +573,7 @@ test("drag product and fruit group order, cancel and persist by category", async
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               id: null,
-              category: "experience",
+              category: "product",
               fruit_type,
               weight_grams,
               description: "정렬 테스트",
@@ -520,7 +592,7 @@ test("drag product and fruit group order, cancel and persist by category", async
     expect(status).toBe(200);
   }
   await page.goto("/namu-admin/products");
-  await page.getByRole("button", { name: "체험 상품", exact: true }).click();
+  await page.getByRole("button", { name: "일반 상품", exact: true }).click();
   const handles = () =>
     page.getByRole("button", {
       name: new RegExp(`^${fruit} [35]kg 정렬 테스트 순서 이동$`),
@@ -627,7 +699,7 @@ test("drag product and fruit group order, cancel and persist by category", async
     page.getByRole("button", { name: "순서 저장", exact: true }),
   ).toBeDisabled();
   await page.reload();
-  await page.getByRole("button", { name: "체험 상품", exact: true }).click();
+  await page.getByRole("button", { name: "일반 상품", exact: true }).click();
   await expect(handles().first()).toHaveAccessibleName(
     `${fruit} 5kg 정렬 테스트 순서 이동`,
   );
@@ -636,7 +708,7 @@ test("drag product and fruit group order, cancel and persist by category", async
     return rows
       .filter(
         (p: { category: string; fruit_type: string }) =>
-          p.category === "experience" && p.fruit_type.startsWith(fruit),
+          p.category === "product" && p.fruit_type.startsWith(fruit),
       )
       .map((p: { fruit_type: string; weight_grams: number }) => [
         p.fruit_type,

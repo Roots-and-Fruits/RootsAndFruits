@@ -66,11 +66,11 @@ export function SenderFields({ prefix = "" }: { prefix?: string }) {
         <PhoneInput
           id="sender-phone"
           label="휴대폰 번호"
-          placeholder="01012345678"
+          placeholder="010-1234-5678"
           type="tel"
           inputMode="numeric"
           autoComplete="off"
-          {...register(path("phone"))}
+          name={path("phone")}
           error={error("phone")}
           hint="주문 확인을 위해 연락드릴 수 있는 번호를 입력해주세요."
         />

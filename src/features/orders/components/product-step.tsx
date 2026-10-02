@@ -7,12 +7,14 @@ import {
   isSoldOut,
   productLabel,
   type Product,
+  type CatalogCategory,
 } from "@/features/catalog/types";
 import type { OrderLine } from "../schema";
 import { calculateDeliveryAmounts, formatWon } from "../calculations";
 import { StepActions } from "./step-actions";
 
 export function ProductStep({
+  category,
   products,
   bundleDiscount = 0,
   items,
@@ -21,6 +23,7 @@ export function ProductStep({
   onNext,
   showActions = true,
 }: {
+  category: CatalogCategory;
   products: Product[];
   bundleDiscount?: number;
   items: OrderLine[];
@@ -29,7 +32,10 @@ export function ProductStep({
   onNext?: () => void;
   showActions?: boolean;
 }) {
-  const groups = Map.groupBy(products, (product) => product.fruitType);
+  const experience = category === "experience";
+  const groups = Map.groupBy(products, (product) =>
+    experience ? "체험 상품" : product.fruitType!,
+  );
   function updateQuantity(product: Product, quantity: number) {
     const rest = items.filter((line) => line.productId !== product.id);
     onChange(
@@ -38,7 +44,7 @@ export function ProductStep({
   }
   return (
     <div>
-      {bundleDiscount > 0 && (
+      {!experience && bundleDiscount > 0 && (
         <p className="mb-4 rounded-xl bg-secondary px-3 py-2.5 text-sm">
           이 배송지의 할인 대상 상품 2개마다 {formatWon(bundleDiscount)}{" "}
           할인돼요. 종류가 달라도 합산하며, 3개는 1회·4개는 2회 할인이에요.
@@ -58,9 +64,11 @@ export function ProductStep({
         <div className="space-y-5">
           {[...groups].map(([fruit, group]) => (
             <section key={fruit} aria-label={fruit}>
-              <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
-                {fruit}
-              </h3>
+              {!experience && (
+                <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+                  {fruit}
+                </h3>
+              )}
               <div className="divide-y divide-border rounded-xl border border-border">
                 {group.map((product) => {
                   const count =
@@ -75,10 +83,16 @@ export function ProductStep({
                     >
                       <div className="min-w-0 flex-1 break-words">
                         <p className="text-sm font-semibold leading-5">
-                          {product.weightGrams / 1000}kg{" "}
-                          <span className="ml-1 text-sm font-normal text-muted-foreground">
-                            {product.description}
-                          </span>
+                          {experience ? (
+                            product.description
+                          ) : (
+                            <>
+                              {product.weightGrams! / 1000}kg{" "}
+                              <span className="ml-1 text-sm font-normal text-muted-foreground">
+                                {product.description}
+                              </span>
+                            </>
+                          )}
                         </p>
                         {product.unavailableReason && (
                           <p className="mt-1 text-xs text-destructive">
@@ -89,7 +103,7 @@ export function ProductStep({
                           <span className="text-sm tabular-nums">
                             {formatWon(product.price)}
                           </span>
-                          {product.bundleEligible && (
+                          {!experience && product.bundleEligible && (
                             <Badge
                               variant="secondary"
                               className="px-1.5 text-[11px]"
@@ -145,9 +159,14 @@ export function ProductStep({
         {formatWon(
           calculateDeliveryAmounts(items, products, bundleDiscount).subtotal,
         )}{" "}
-        · 묶음 할인 −
-        {formatWon(
-          calculateDeliveryAmounts(items, products, bundleDiscount).discount,
+        {!experience && (
+          <>
+            · 묶음 할인 −
+            {formatWon(
+              calculateDeliveryAmounts(items, products, bundleDiscount)
+                .discount,
+            )}
+          </>
         )}
       </p>
       <div className="mt-4 flex items-center justify-between rounded-xl bg-secondary px-4 py-3">
