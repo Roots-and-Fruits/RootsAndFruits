@@ -13,6 +13,12 @@ import {
   type Shipment,
 } from "@/features/admin/schema";
 import { shippingWorkbook } from "@/features/admin/excel";
+import {
+  scheduleNotifications,
+  processNotifications,
+  smsReady,
+} from "@/features/notifications/server";
+export const maxDuration = 60;
 const uuid = z.string().uuid();
 const idsSchema = z
   .array(uuid)
@@ -27,6 +33,37 @@ export async function GET(request: Request, context: Context) {
     const { path } = await context.params;
     const db = createServiceClient();
     const url = new URL(request.url);
+    if (path[0] === "notifications") {
+      const page = z.coerce
+        .number()
+        .int()
+        .min(0)
+        .max(1000000)
+        .parse(url.searchParams.get("page") || 0);
+      const [settings, notifications] = await Promise.all([
+        db.from("notification_settings").select("enabled").eq("id", 1).single(),
+        db
+          .from("order_notifications")
+          .select(
+            "id,event,phone,payload,status,attempts,provider_id,error_code,created_at,updated_at",
+            { count: "exact" },
+          )
+          .order("created_at", { ascending: false })
+          .order("id")
+          .range(page * 30, page * 30 + 29),
+      ]);
+      checkDb(settings.error);
+      checkDb(notifications.error);
+      return Response.json(
+        {
+          enabled: settings.data?.enabled,
+          ready: smsReady(),
+          rows: notifications.data,
+          count: notifications.count,
+        },
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
     if (path[0] === "products") {
       const { data, error } = await db
         .from("products")
@@ -175,7 +212,30 @@ export async function POST(request: Request, context: Context) {
     if (!staff) throw new HttpError("관리자 로그인이 필요합니다.", 401);
     const db = createServiceClient();
     let result;
-    if (path[0] === "products" && path[1] === "order") {
+    if (path[0] === "notifications") {
+      if (path[1] === "configure") {
+        const enabled = z.boolean().parse(body.enabled);
+        if (enabled && !smsReady())
+          throw new HttpError(
+            "서버의 솔라피 키·발신번호·SMS_ENABLED 설정이 필요합니다.",
+          );
+        result = await db.rpc("configure_order_notifications", {
+          p_enabled: enabled,
+          p_actor: staff.id,
+        });
+      } else if (path[1] === "retry") {
+        if (!smsReady())
+          throw new HttpError("서버의 문자 발송 설정을 확인해주세요.");
+        result = await db.rpc("retry_order_notification", {
+          p_id: uuid.parse(body.id),
+          p_actor: staff.id,
+        });
+      } else if (path[1] === "process") {
+        if (!smsReady())
+          throw new HttpError("서버의 문자 발송 설정을 확인해주세요.");
+        return Response.json({ processed: await processNotifications() });
+      } else throw new HttpError("찾을 수 없는 요청입니다.", 404);
+    } else if (path[0] === "products" && path[1] === "order") {
       const value = z
         .object({
           category: z.enum(["product", "experience"]),
@@ -285,6 +345,12 @@ export async function POST(request: Request, context: Context) {
       return Response.json({ id: batchId });
     } else throw new HttpError("찾을 수 없는 요청입니다.", 404);
     checkDb(result.error);
+    if (
+      path[0] === "ship" ||
+      (path[0] === "orders" && path[2] === "reorder") ||
+      (path[0] === "notifications" && path[1] === "retry")
+    )
+      scheduleNotifications();
     return Response.json(result.data ?? { ok: true });
   } catch (error) {
     return apiError(error);

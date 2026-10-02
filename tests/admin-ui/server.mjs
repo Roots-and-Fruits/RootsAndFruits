@@ -19,6 +19,7 @@ for (const file of [
   "202609290001_customer_auth.sql",
   "202610020001_experience_products.sql",
   "202610020002_payment_method.sql",
+  "202610030001_order_notifications.sql",
 ])
   await db.exec(
     await readFile(join(root, "supabase/migrations", file), "utf8"),
@@ -192,6 +193,8 @@ const server = createServer(async (req, res) => {
         "shipping_settings",
         "checkouts",
         "export_batches",
+        "notification_settings",
+        "order_notifications",
       ].includes(table)
     )
       return send(res, {}, 404);
@@ -298,6 +301,10 @@ const next = spawn(
       SUPABASE_SERVICE_ROLE_KEY: "",
       NEXT_TELEMETRY_DISABLED: "1",
       ENABLE_ORDER_PREVIEW: "true",
+      SMS_ENABLED: "false",
+      SOLAPI_API_KEY: "",
+      SOLAPI_API_SECRET: "",
+      NOTIFICATION_CRON_SECRET: "",
     },
     stdio: "inherit",
   },

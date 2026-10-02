@@ -45,6 +45,7 @@ async function setup(
     "202609290001_customer_auth.sql",
     "202610020001_experience_products.sql",
     "202610020002_payment_method.sql",
+    "202610030001_order_notifications.sql",
   ])
     if (
       (includeExperienceMigration ||
@@ -62,6 +63,174 @@ async function setup(
   );
   return db;
 }
+test("Postgres: notification outbox is opt-in, atomic, sender-only and idempotent", async () => {
+  const db = await setup();
+  try {
+    const submit = (
+      id: string,
+      order = payload([delivery([{ productId: p2, quantity: 1 }])]),
+    ) =>
+      db.query("select submit_checkout($1,$2::jsonb)", [
+        id,
+        JSON.stringify(order),
+      ]);
+    await submit(crypto.randomUUID());
+    assert.equal(
+      (await db.query("select * from order_notifications")).rows.length,
+      0,
+    );
+    await assert.rejects(
+      db.query("select configure_order_notifications(true,$1)", [
+        crypto.randomUUID(),
+      ]),
+    );
+    await db.query("select configure_order_notifications(true,$1)", [staff]);
+    const key = crypto.randomUUID();
+    const order = payload([
+      delivery([{ productId: p2, quantity: 1 }]),
+      delivery([{ productId: p2, quantity: 2 }]),
+    ]);
+    order.deliveries[0] = {
+      ...order.deliveries[0],
+      recipient: { ...recipient, phone: "01099998888" },
+    };
+    await submit(key, order);
+    await submit(key, order);
+    let rows = (
+      await db.query<{
+        id: string;
+        checkout_id: string;
+        event: string;
+        phone: string;
+        payload: { total: number; deliveryCount: number };
+        status: string;
+      }>("select * from order_notifications")
+    ).rows;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].phone, sender.phone);
+    assert.equal(rows[0].payload.total, 57000);
+    assert.equal(rows[0].payload.deliveryCount, 2);
+    const checkout = rows[0].checkout_id,
+      receiptId = rows[0].id;
+    // Failed order transaction leaves no notification behind.
+    await assert.rejects(
+      submit(
+        crypto.randomUUID(),
+        payload([delivery([{ productId: crypto.randomUUID(), quantity: 1 }])]),
+      ),
+    );
+    assert.equal(
+      (await db.query("select * from order_notifications")).rows.length,
+      1,
+    );
+    const claim = () =>
+      db.query<{ id: string }>("select * from claim_order_notifications(10)");
+    assert.equal((await claim()).rows.length, 1);
+    assert.equal((await claim()).rows.length, 0);
+    await db.query(
+      "update order_notifications set updated_at=now()-interval '6 minutes' where id=$1",
+      [receiptId],
+    );
+    assert.equal((await claim()).rows.length, 0);
+    assert.equal(
+      (
+        await db.query<{ status: string }>(
+          "select status from order_notifications where id=$1",
+          [receiptId],
+        )
+      ).rows[0].status,
+      "unknown",
+    );
+    await db.query("select retry_order_notification($1,$2)", [
+      receiptId,
+      staff,
+    ]);
+    assert.equal((await claim()).rows.length, 0);
+    const ids = (
+      await db.query<{ id: string }>(
+        "select id from deliveries where checkout_id=$1",
+        [checkout],
+      )
+    ).rows.map((r) => r.id);
+    await db.query("select change_checkout($1,'pay',$2,'card')", [
+      checkout,
+      staff,
+    ]);
+    await db.query("select commit_export($1,$2,'test.xlsx','file',$3)", [
+      crypto.randomUUID(),
+      ids,
+      staff,
+    ]);
+    assert.equal(
+      (await db.query("select * from order_notifications")).rows.length,
+      1,
+    );
+    await db.query("select mark_shipped($1,$2)", [ids, staff]);
+    await db.query("select mark_shipped($1,$2)", [ids, staff]);
+    rows = (
+      await db.query<(typeof rows)[number]>("select * from order_notifications")
+    ).rows;
+    assert.equal(rows.length, 3);
+    assert.ok(rows.every((r) => r.phone === sender.phone));
+    const claimed = await claim();
+    assert.equal(claimed.rows.length, 2);
+    await db.query(
+      "update order_notifications set status='failed' where id=$1",
+      [claimed.rows[0].id],
+    );
+    await db.query("select retry_order_notification($1,$2)", [
+      claimed.rows[0].id,
+      staff,
+    ]);
+    await db.query("select retry_order_notification($1,$2)", [
+      claimed.rows[0].id,
+      staff,
+    ]);
+    assert.equal((await claim()).rows.length, 1);
+    const cancelKey = crypto.randomUUID();
+    await submit(cancelKey);
+    await db.query(
+      "select change_checkout(id,'cancel',$1) from checkouts where request_id=$2",
+      [staff, cancelKey],
+    );
+    assert.equal((await claim()).rows.length, 0);
+    assert.equal(
+      (
+        await db.query<{ status: string }>(
+          "select n.status from order_notifications n join checkouts c on c.id=n.checkout_id where c.request_id=$1",
+          [cancelKey],
+        )
+      ).rows[0].status,
+      "skipped",
+    );
+    await submit(crypto.randomUUID());
+    await db.query("select configure_order_notifications(false,$1)", [staff]);
+    assert.equal(
+      (
+        await db.query(
+          "select * from order_notifications where status='pending'",
+        )
+      ).rows.length,
+      0,
+    );
+    await db.query("select configure_order_notifications(true,$1)", [staff]);
+    assert.equal((await claim()).rows.length, 0);
+    await db.exec("set role anon");
+    await assert.rejects(db.query("select * from order_notifications"));
+    await assert.rejects(
+      db.query("select * from claim_order_notifications(1)"),
+    );
+    await db.exec("reset role; set role authenticated");
+    await assert.rejects(db.query("select * from order_notifications"));
+    await assert.rejects(
+      db.query("select configure_order_notifications(true,$1)", [staff]),
+    );
+    await db.exec("reset role");
+  } finally {
+    await db.close();
+  }
+});
+
 test("Postgres: discount per delivery, immutable totals, retry, stock and cancel", async () => {
   const db = await setup();
   try {

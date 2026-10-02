@@ -6,12 +6,14 @@ import { AdminButton as Button } from "./admin-button";
 import { adminRequest } from "./client";
 import { CatalogAdmin } from "./catalog-admin";
 import { OrdersAdmin } from "./orders-admin";
+import { NotificationsAdmin } from "./notifications-admin";
 const links = [
   ["counter", "카운터"],
   ["orders", "주문 관리"],
   ["shipping", "발송 관리"],
   ["products", "상품·재고"],
   ["settings", "설정"],
+  ["notifications", "문자 내역"],
 ];
 export function AdminShell({ section }: { section: string }) {
   const router = useRouter();
@@ -66,7 +68,9 @@ export function AdminShell({ section }: { section: string }) {
           {links.find(([key]) => key === section)?.[1]}
         </h1>
         {error && <p role="alert">{error}</p>}
-        {section === "products" || section === "settings" ? (
+        {section === "notifications" ? (
+          <NotificationsAdmin />
+        ) : section === "products" || section === "settings" ? (
           <CatalogAdmin key={section} section={section} />
         ) : (
           <OrdersAdmin key={section} section={section} />

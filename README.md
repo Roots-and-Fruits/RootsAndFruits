@@ -65,6 +65,14 @@ Mac의 Wi-Fi 주소는 `ipconfig getifaddr en0`으로 확인할 수 있습니다
 고객 카카오 로그인은 `/login`, 태블릿 전용 로그인은 `/tablet-login`입니다. 추가 SQL·외부 인증 설정 및 `npm run tablet:create` 사용법은 [회원 인증 설정](docs/customer-auth-setup.md)을 참고하세요.
 서비스 비밀 키를 `NEXT_PUBLIC_*` 변수나 저장소에 넣지 마세요. 가상 상품은 운영 DB에 자동 등록하지 않습니다.
 
+### 링크 공유 미리보기
+
+- 카카오톡 등의 Open Graph와 X의 큰 이미지 카드에 공통 브랜드 이미지·제목·설명을 제공합니다.
+- 기준 주소는 `https://www.2180.co.kr`입니다. 다른 도메인에서 운영할 경우 `SITE_URL`에 프로토콜을 포함한 주소를 설정하고 다시 빌드합니다.
+- `public/brand/share-card.png`는 1200×630 공유 이미지입니다. 정적 import로 이미지 내용에 따른 해시 주소를 사용합니다. `src/app/layout.tsx`에서 제목·설명·이미지 정보를 관리합니다.
+- 이미지 디자인이나 로고를 변경하면 `node scripts/generate-share-image.mjs`로 다시 출력합니다. 로컬 Chrome(macOS) 또는 Playwright Chromium과 한글 글꼴이 필요하며, PNG를 저장소에 포함하므로 배포 서버에는 이미지 생성 도구가 필요 없습니다.
+- 배포 후 공유할 URL의 이미지 응답을 확인합니다. 카카오톡에 이전 미리보기가 남아 있다면 [카카오 공유 디버거](https://developers.kakao.com/docs/ko/tool/common)에서 해당 URL의 OG 정보를 확인하고 초기화할 수 있습니다.
+
 ## 구조
 
 ```text
@@ -114,3 +122,7 @@ macOS에서는 설치된 Google Chrome을 사용합니다. 다른 환경에서�
 `npm run test:db`는 PGlite(Postgres)에서 실제 마이그레이션과 SQL 함수를 검증합니다.
 `npm run test:admin-ui`는 소스를 임시 디렉터리에 복사해 포트 3110·3111에서 별도 Next.js와 테스트용 Auth/PostgREST 응답 서버를 실행합니다. 업무 RPC는 PGlite의 실제 SQL을 사용합니다. 관리자 페이지에 인증 우회 경로를 추가하지 않으며 원격 Supabase 인증 검증을 대신하지 않습니다. 기존 3000번 개발 서버와 `.env.local`은 변경하지 않습니다.
 ExcelJS의 UUID 하위 의존성은 호환되는 수정 버전으로 고정하며 엑셀 생성·읽기 테스트로 확인합니다.
+
+## 주문 문자 발송
+
+SOLAPI 문자 연동은 [설정 안내](docs/sms-setup.md)를 따른다. 신규 마이그레이션 적용, 서버 환경변수 설정, 관리자 **문자 내역 → 문자 켜기**가 필요하다. 기본은 꺼짐이며 키 미설정 상태에서는 실제 문자를 보내지 않는다. 접수·배송지별 발송 안내 모두 보내는 분에게 전송한다.

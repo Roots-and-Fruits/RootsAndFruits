@@ -7,7 +7,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-// Text preserved from legacy Sender.tsx; this is not newly drafted legal policy.
+// Legacy consent text, with order notification purpose added for SMS integration.
 export function ConsentDetails({ marketing = false }: { marketing?: boolean }) {
   return (
     <Dialog>
@@ -36,7 +36,7 @@ export function ConsentDetails({ marketing = false }: { marketing?: boolean }) {
             <dd className="text-muted-foreground">
               {marketing
                 ? "상품 안내 이벤트 알림서비스"
-                : "상품 택배배송을 위한 목적"}
+                : "상품 택배배송 및 주문 접수·발송 안내"}
             </dd>
           </div>
           <div>

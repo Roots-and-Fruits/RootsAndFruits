@@ -10,7 +10,14 @@ export default async function AdminSection({
   if (!(await getStaff())) redirect("/namu-admin/login");
   const { section } = await params;
   if (
-    !["counter", "orders", "shipping", "products", "settings"].includes(section)
+    ![
+      "counter",
+      "orders",
+      "shipping",
+      "products",
+      "settings",
+      "notifications",
+    ].includes(section)
   )
     notFound();
   return <AdminShell section={section} />;
