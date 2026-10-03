@@ -4,6 +4,7 @@ import { AdminInput as Input } from "./admin-fields";
 import { ConfirmAction } from "./confirm-action";
 import {
   paymentMethodLabels,
+  savedItemLabel,
   stateLabel,
   type Checkout,
   type PaymentMethod,
@@ -34,7 +35,7 @@ export function OrderDetail({
     for (const i of d.order_items) {
       const old = aggregate.get(i.product_id);
       aggregate.set(i.product_id, {
-        label: i.label,
+        label: savedItemLabel(i, c.category),
         quantity: (old?.quantity ?? 0) + i.quantity,
         amount: (old?.amount ?? 0) + i.unit_price * i.quantity,
       });
@@ -106,7 +107,7 @@ export function OrderDetail({
             </p>
             <p className="text-sm">
               {d.order_items
-                .map((i) => `${i.label} × ${i.quantity}`)
+                .map((i) => `${savedItemLabel(i, c.category)} × ${i.quantity}`)
                 .join(", ")}
             </p>
             <p className="text-sm">

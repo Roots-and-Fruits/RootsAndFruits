@@ -59,6 +59,27 @@
 - 이미 접수된 주문의 상품명·가격·중량·할인·재고 차감 기록은 수정하지 않습니다. 오픈 전 데이터 초기화는 이 SQL에 포함하지 않습니다.
 - 체험상품의 저장·정렬·접수 규칙을 함께 변경하므로 화면 코드와 SQL을 모두 적용해야 합니다. 적용 후 체험상품 등록·수정, 과일 그룹 없는 순서 변경, 할인·재고 차감 없는 주문 접수를 확인합니다.
 
+등록 시 400과 ‘데이터를 처리하지 못했습니다’가 나오고 기존 체험상품 수정도 멈춘다면, 이 마이그레이션 누락 여부를 확인합니다. 결제 방식·문자 SQL을 적용했더라도 체험상품 SQL이 자동 적용되지는 않습니다. 누락된 경우 위 파일 전체를 한 번 실행합니다. 주문 초기화용 `supabase/maintenance/20261003_reset_test_orders.sql`은 이 오류의 해결 쿼리가 아닙니다.
+
+2026-10-03 사용자 요청에 따라 원격 SQL은 사용자가 직접 실행하며 에이전트가 Chrome에서 실행하지 않습니다. 실행 후 아래 읽기 전용 쿼리에서 모두 `YES`, `true`인지 확인할 수 있습니다. 주문번호·기존 주문·가격·판매 상태는 변경하지 않습니다.
+
+```sql
+select table_name, column_name, is_nullable
+from information_schema.columns
+where table_schema = 'public'
+  and ((table_name = 'products' and column_name in ('fruit_type', 'weight_grams'))
+    or (table_name = 'order_items' and column_name = 'weight_grams'))
+order by table_name, column_name;
+
+select exists (
+  select 1 from pg_constraint
+  where conrelid = 'public.products'::regclass
+    and conname = 'products_category_fields'
+) as experience_constraint_applied;
+```
+
+기존 체험 주문의 ‘택배 1kg · 체험귤’ 같은 상품명은 저장된 주문 내용에서 이전 접두어만 숨겨 표시합니다. 신규 주문은 변경된 DB 접수 함수가 ‘체험귤’만 저장합니다. 이미 생성한 엑셀 묶음의 재다운로드는 저장 파일을 그대로 반환합니다.
+
 
 ### 결제 방식 기록 추가
 

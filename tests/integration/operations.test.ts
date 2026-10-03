@@ -987,6 +987,31 @@ test("Postgres: experience migration normalizes catalog but preserves existing o
       items: (await db.query("select * from order_items")).rows,
     });
     const before = await snapshots();
+    const experienceData = {
+      category: "experience",
+      fruit_type: null,
+      weight_grams: null,
+      description: "체험귤",
+      price: 10000,
+      is_active: true,
+      is_deleted: false,
+      inventory_enabled: false,
+      bundle_eligible: false,
+      stock_quantity: null,
+    };
+    const save = (id: string | null, description: string) =>
+      db.query<{ id: string }>("select save_product($1,$2::jsonb,$3) as id", [
+        id,
+        JSON.stringify({ ...experienceData, description }),
+        staff,
+      ]);
+    // Reproduce both failing writes against the schema with the missed migration.
+    for (const id of [null, p1]) {
+      await assert.rejects(save(id, "체험귤"), { code: "23502" });
+    }
+    const sequenceBefore = (
+      await db.query("select last_value,is_called from checkout_number_seq")
+    ).rows;
     await db.exec(
       await readFile(
         "supabase/migrations/202610020001_experience_products.sql",
@@ -994,6 +1019,14 @@ test("Postgres: experience migration normalizes catalog but preserves existing o
       ),
     );
     assert.deepEqual(await snapshots(), before);
+    assert.deepEqual(
+      (await db.query("select last_value,is_called from checkout_number_seq"))
+        .rows,
+      sequenceBefore,
+    );
+    const created = (await save(null, "새 체험귤")).rows[0].id;
+    assert.equal((await save(p1, "수정 체험귤")).rows[0].id, p1);
+    assert.equal((await save(created, "새 체험귤 수정")).rows[0].id, created);
     assert.deepEqual(
       (
         await db.query(

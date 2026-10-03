@@ -59,3 +59,20 @@ export function checkDb(error: { message: string; code?: string } | null) {
           : 503,
     );
 }
+
+export function checkProductSave(
+  error: { message: string; code?: string } | null,
+  category: "product" | "experience",
+) {
+  if (
+    category === "experience" &&
+    error?.code === "23502" &&
+    /"(?:fruit_type|weight_grams)"/.test(error.message)
+  ) {
+    throw new HttpError(
+      "체험상품 DB 업데이트가 필요합니다. 업데이트 적용 후 다시 저장해주세요.",
+      503,
+    );
+  }
+  checkDb(error);
+}

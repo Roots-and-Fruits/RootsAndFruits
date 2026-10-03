@@ -3,7 +3,13 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getStaff } from "@/features/admin/auth";
-import { readBody, apiError, checkDb, HttpError } from "@/features/admin/http";
+import {
+  readBody,
+  apiError,
+  checkDb,
+  checkProductSave,
+  HttpError,
+} from "@/features/admin/http";
 import {
   productSchema,
   paymentSchema,
@@ -264,6 +270,7 @@ export async function POST(request: Request, context: Context) {
         p_data: value,
         p_actor: staff.id,
       });
+      checkProductSave(result.error, value.category);
     } else if (path[0] === "settings") {
       result = await db.rpc("save_settings", {
         p_data: settingsSchema.parse(body),

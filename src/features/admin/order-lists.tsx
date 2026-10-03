@@ -6,6 +6,7 @@ import { AdminButton } from "./admin-button";
 import { OrderNotes } from "./order-notes";
 import {
   paymentMethodLabels,
+  savedItemLabel,
   stateLabel,
   type Checkout,
   type Shipment,
@@ -216,7 +217,9 @@ export function ShippingList({
             <div className="min-w-0 space-y-1">
               <p>
                 {d.order_items
-                  .map((i) => `${i.label} × ${i.quantity}`)
+                  .map(
+                    (i) => `${savedItemLabel(i, c.category)} × ${i.quantity}`,
+                  )
                   .join(", ")}
               </p>
               <p className="text-xs text-muted-foreground">

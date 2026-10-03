@@ -211,7 +211,14 @@ function ProductForm({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       ...value,
-      weight_kg: value.weight_grams === null ? null : value.weight_grams / 1000,
+      // Older DB rows can still contain fields the experience form no longer shows.
+      ...(value.category === "experience"
+        ? { fruit_type: null, inventory_enabled: false, bundle_eligible: false }
+        : {}),
+      weight_kg:
+        value.category === "experience" || value.weight_grams === null
+          ? null
+          : value.weight_grams / 1000,
       stock_quantity: null,
     },
   });
@@ -220,22 +227,28 @@ function ProductForm({
   return (
     <form
       className="max-w-5xl space-y-5 rounded-xl border bg-card p-5 lg:space-y-4 lg:p-6"
-      onSubmit={handleSubmit(async (v) => {
-        try {
-          setError("");
-          const { weight_kg, ...product } = v;
-          await onSave({
-            ...product,
-            weight_grams:
-              weight_kg === null ? null : Math.round(weight_kg * 1000),
-            stock_quantity: product.inventory_enabled
-              ? product.stock_quantity
-              : null,
-          });
-        } catch (e) {
-          setError((e as Error).message);
-        }
-      })}
+      onSubmit={handleSubmit(
+        async (v) => {
+          try {
+            setError("");
+            const { weight_kg, ...product } = v;
+            await onSave({
+              ...product,
+              weight_grams:
+                weight_kg === null ? null : Math.round(weight_kg * 1000),
+              stock_quantity: product.inventory_enabled
+                ? product.stock_quantity
+                : null,
+            });
+          } catch (e) {
+            setError((e as Error).message);
+          }
+        },
+        () => {
+          // Hidden or unregistered fields must not leave a seemingly inert Save button.
+          setError("입력 내용을 확인해주세요. 저장되지 않은 항목이 있습니다.");
+        },
+      )}
     >
       <h2 className="text-xl font-semibold lg:text-lg">
         {value.id ? "상품 수정" : "새 상품"}

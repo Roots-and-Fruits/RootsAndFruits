@@ -109,3 +109,33 @@ test("Excel preserves old column order, actual units, leading zeros and plain te
   assert.equal(sheet.getCell("B2").type, ExcelJS.ValueType.String);
   assert.equal(sheet.getCell("L2").value, "감귤 3kg 4EA");
 });
+test("Excel uses experience descriptions while retaining general product weights", async () => {
+  const checkout = {
+    category: "experience",
+    sender: { name: "보내는 분", phone: "01012345678" },
+  } as Checkout;
+  const delivery = {
+    recipient: {
+      name: "받는 분",
+      phone: "01087654321",
+      postalCode: "01234",
+      address: "가상",
+      addressDetail: "주소",
+    },
+    order_items: [
+      { label: "택배 1kg · 체험귤", weight_grams: 1000, quantity: 2 },
+    ],
+  } as Shipment;
+  const buffer = await shippingWorkbook(
+    [
+      { checkout, delivery },
+      { checkout: { ...checkout, category: "product" }, delivery },
+    ],
+    { postal_code: "00001", address: "사업장" },
+  );
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+  assert.equal(book.worksheets[0].getCell("L2").value, "체험귤 2EA");
+  assert.equal(book.worksheets[0].getCell("L3").value, "택배 1kg · 체험귤 2EA");
+  assert.equal(book.worksheets[0].getCell("N2").value, 2);
+});

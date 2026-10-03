@@ -101,6 +101,22 @@ export type SavedItem = {
   unit_price: number;
   bundle_eligible: boolean;
 };
+export function savedItemLabel(
+  item: Pick<SavedItem, "label" | "weight_grams">,
+  category: "product" | "experience",
+): string {
+  // Old experience snapshots used "fruit weightkg · description".
+  // Derive display text from that snapshot, never from today's product catalog.
+  if (category === "experience" && item.weight_grams !== null) {
+    const separator = ` ${item.weight_grams / 1000}kg · `;
+    const index = item.label.indexOf(separator);
+    if (index > 0) {
+      const description = item.label.slice(index + separator.length);
+      if (description.trim()) return description;
+    }
+  }
+  return item.label;
+}
 export type Shipment = {
   id: string;
   position: number;

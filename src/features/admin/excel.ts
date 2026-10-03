@@ -1,5 +1,10 @@
 import ExcelJS from "exceljs";
-import type { Checkout, Settings, Shipment } from "./schema";
+import {
+  savedItemLabel,
+  type Checkout,
+  type Settings,
+  type Shipment,
+} from "./schema";
 export const shippingHeaders = [
   "주문번호",
   "보내는사람(지정)",
@@ -41,7 +46,9 @@ export async function shippingWorkbook(
       "",
       d.recipient.postalCode,
       `${d.recipient.address} ${d.recipient.addressDetail}`,
-      d.order_items.map((i) => `${i.label} ${i.quantity}EA`).join(", "),
+      d.order_items
+        .map((i) => `${savedItemLabel(i, c.category)} ${i.quantity}EA`)
+        .join(", "),
       "",
       d.order_items.reduce((s, i) => s + i.quantity, 0),
       "",

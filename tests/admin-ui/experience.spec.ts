@@ -165,6 +165,17 @@ test("experience form, flat sorting, customer selection, order and category conv
   const result = await (await response).json();
   expect(result.total).toBe(20000);
   await expect(page).toHaveURL(/order-complete/);
+  const snapshot = await page.evaluate(async (number) => {
+    const { orders } = await (
+      await fetch(`/api/admin/orders?number=${number}`)
+    ).json();
+    return orders[0].deliveries[0].order_items[0];
+  }, result.orderNumber);
+  expect(snapshot).toMatchObject({
+    label: description,
+    weight_grams: null,
+    quantity: 2,
+  });
 
   await page.goto("/namu-admin/products");
   await page.getByRole("button", { name: "체험 상품", exact: true }).click();
