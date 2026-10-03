@@ -52,8 +52,8 @@ export function PaymentAction({
         <DialogHeader>
           <DialogTitle>결제 완료</DialogTitle>
           <DialogDescription>
-            실제 결제가 완료되었나요? 결제 방식을 선택해주세요. 기록 후에는 이
-            사이트에서 취소할 수 없습니다.
+            실제 결제가 완료되었나요? 결제 방식을 선택해주세요. 주문 취소는 엑셀
+            출력 전에만 가능합니다.
           </DialogDescription>
         </DialogHeader>
         <form

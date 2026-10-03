@@ -69,7 +69,7 @@ function PaymentStatus({
       )}
     >
       {stateLabel[status]}
-      {status === "paid" && (
+      {(status === "paid" || (status === "cancelled" && method)) && (
         <span> · {method ? paymentMethodLabels[method] : "방식 미기록"}</span>
       )}
     </span>
@@ -148,16 +148,22 @@ export function CheckoutList({
             </span>
             {!counter && (
               <span className="col-span-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground lg:col-span-1 lg:flex-col">
-                {(["waiting", "exported", "shipped"] as const).map((status) => {
-                  const count = order.deliveries.filter(
-                    (d) => d.status === status,
-                  ).length;
-                  return count > 0 ? (
-                    <span key={status}>
-                      {stateLabel[status]} {count}건
-                    </span>
-                  ) : null;
-                })}
+                {order.status === "cancelled" ? (
+                  <span>발송 제외</span>
+                ) : (
+                  (["waiting", "exported", "shipped"] as const).map(
+                    (status) => {
+                      const count = order.deliveries.filter(
+                        (d) => d.status === status,
+                      ).length;
+                      return count > 0 ? (
+                        <span key={status}>
+                          {stateLabel[status]} {count}건
+                        </span>
+                      ) : null;
+                    },
+                  )
+                )}
               </span>
             )}
             {(order.original_id ||
@@ -234,7 +240,7 @@ export function ShippingList({
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <PaymentStatus status={c.status} method={c.payment_method} />
               <span className="text-xs text-muted-foreground">
-                {stateLabel[d.status]}
+                {c.status === "cancelled" ? "발송 제외" : stateLabel[d.status]}
               </span>
             </div>
             <AdminButton

@@ -20,6 +20,7 @@ for (const file of [
   "202610020001_experience_products.sql",
   "202610020002_payment_method.sql",
   "202610030001_order_notifications.sql",
+  "202610030002_cancel_before_export.sql",
 ])
   await db.exec(
     await readFile(join(root, "supabase/migrations", file), "utf8"),

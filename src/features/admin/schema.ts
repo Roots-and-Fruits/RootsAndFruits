@@ -143,6 +143,7 @@ export type Checkout = {
   total: number;
   status: "pending" | "paid" | "cancelled";
   payment_method: PaymentMethod | null;
+  paid_at?: string | null;
   original_id: string | null;
   original_number?: number | null;
   created_at: string;

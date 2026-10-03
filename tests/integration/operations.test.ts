@@ -33,6 +33,7 @@ const payload = (deliveries: ReturnType<typeof delivery>[]) => ({
 async function setup(
   includeExperienceMigration = true,
   includePaymentMigration = true,
+  includeCancellationMigration = includePaymentMigration,
 ) {
   const db = new PGlite();
   await db.exec(
@@ -46,11 +47,14 @@ async function setup(
     "202610020001_experience_products.sql",
     "202610020002_payment_method.sql",
     "202610030001_order_notifications.sql",
+    "202610030002_cancel_before_export.sql",
   ])
     if (
       (includeExperienceMigration ||
         f !== "202610020001_experience_products.sql") &&
-      (includePaymentMigration || f !== "202610020002_payment_method.sql")
+      (includePaymentMigration || f !== "202610020002_payment_method.sql") &&
+      (includeCancellationMigration ||
+        f !== "202610030002_cancel_before_export.sql")
     )
       await db.exec(await readFile(`supabase/migrations/${f}`, "utf8"));
   await db.query("select public.provision_staff(1::smallint,$1,$2,$3)", [
@@ -63,6 +67,297 @@ async function setup(
   );
   return db;
 }
+test("Postgres: cancellation upgrade preserves history, accepts paid orders and restores stock once", async () => {
+  const db = await setup(true, true, false);
+  try {
+    await db.query("select configure_order_notifications(true,$1)", [staff]);
+    const ids: string[] = [];
+    for (const method of [
+      "card",
+      "cash",
+      "transfer",
+      "other",
+      "legacy",
+      "pending",
+    ]) {
+      const requestId = crypto.randomUUID();
+      await db.query("select submit_checkout($1,$2::jsonb)", [
+        requestId,
+        JSON.stringify(
+          payload([
+            delivery([{ productId: p1, quantity: 1 }]),
+            delivery([{ productId: p2, quantity: 1 }]),
+          ]),
+        ),
+      ]);
+      const id = (
+        await db.query<{ id: string }>(
+          "select id from checkouts where request_id=$1",
+          [requestId],
+        )
+      ).rows[0].id;
+      ids.push(id);
+      if (method !== "pending") {
+        await db.query("select change_checkout($1,'pay',$2,$3)", [
+          id,
+          staff,
+          method === "legacy" ? "card" : method,
+        ]);
+        if (method === "legacy")
+          await db.query(
+            "update checkouts set payment_method=null where id=$1",
+            [id],
+          );
+        await assert.rejects(
+          db.query("select change_checkout($1,'cancel',$2)", [id, staff]),
+          /결제 전 주문만/,
+        );
+      }
+    }
+    const snapshot = async () => ({
+      orders: (await db.query("select * from checkouts order by id")).rows,
+      deliveries: (await db.query("select * from deliveries order by id")).rows,
+      items: (await db.query("select * from order_items order by id")).rows,
+      stock: (await db.query("select * from stock_movements order by id")).rows,
+      events: (await db.query("select * from staff_events order by id")).rows,
+      sequence: (
+        await db.query("select last_value,is_called from checkout_number_seq")
+      ).rows,
+    });
+    const before = await snapshot();
+    await db.exec(
+      await readFile(
+        "supabase/migrations/202610030002_cancel_before_export.sql",
+        "utf8",
+      ),
+    );
+    assert.deepEqual(await snapshot(), before);
+    await db.query("update products set inventory_enabled=false where id=$1", [
+      p1,
+    ]);
+    for (const id of ids) {
+      const original = (
+        await db.query<Record<string, unknown>>(
+          "select * from checkouts where id=$1",
+          [id],
+        )
+      ).rows[0];
+      await assert.rejects(
+        db.query("select change_checkout($1,'cancel',$2)", [
+          id,
+          crypto.randomUUID(),
+        ]),
+      );
+      await db.query("select change_checkout($1,'cancel',$2)", [id, staff]);
+      const cancelled = (
+        await db.query<Record<string, unknown>>(
+          "select * from checkouts where id=$1",
+          [id],
+        )
+      ).rows[0];
+      assert.ok(cancelled.cancelled_at);
+      assert.deepEqual(cancelled, {
+        ...original,
+        status: "cancelled",
+        cancelled_at: cancelled.cancelled_at,
+      });
+      await db.query("select change_checkout($1,'cancel',$2)", [id, staff]);
+      assert.deepEqual(
+        (await db.query("select * from checkouts where id=$1", [id])).rows[0],
+        cancelled,
+      );
+      assert.equal(
+        (
+          await db.query<{ n: number }>(
+            "select count(*)::int n from staff_events where target_id=$1 and action='cancel'",
+            [id],
+          )
+        ).rows[0].n,
+        1,
+      );
+      assert.deepEqual(
+        (
+          await db.query(
+            "select product_id,delta from stock_movements where checkout_id=$1 and reason='cancel'",
+            [id],
+          )
+        ).rows,
+        [{ product_id: p1, delta: 1 }],
+      );
+      await assert.rejects(
+        db.query("select change_checkout($1,'pay',$2,'cash')", [id, staff]),
+        /결제 대기 주문만/,
+      );
+    }
+    assert.deepEqual(
+      (
+        await db.query(
+          "select id,stock_quantity from products where id=any($1) order by id",
+          [[p1, p2]],
+        )
+      ).rows,
+      [
+        { id: p1, stock_quantity: 2 },
+        { id: p2, stock_quantity: null },
+      ],
+    );
+    const after = await snapshot();
+    assert.deepEqual(after.deliveries, before.deliveries);
+    assert.deepEqual(after.items, before.items);
+    assert.deepEqual(after.sequence, before.sequence);
+    assert.equal(
+      (await db.query("select * from claim_order_notifications(10)")).rows
+        .length,
+      0,
+    );
+    assert.ok(
+      (
+        await db.query<{ status: string }>(
+          "select status from order_notifications",
+        )
+      ).rows.every((n) => n.status === "skipped"),
+    );
+    for (const role of ["anon", "authenticated"]) {
+      const privileges = (
+        await db.query<{ cancel: boolean; export: boolean }>(
+          "select has_function_privilege($1,'public.change_checkout(uuid,text,uuid,text)','EXECUTE') as cancel,has_function_privilege($1,'public.commit_export(uuid,uuid[],text,text,uuid)','EXECUTE') as export",
+          [role],
+        )
+      ).rows[0];
+      assert.deepEqual(privileges, { cancel: false, export: false });
+    }
+  } finally {
+    await db.close();
+  }
+});
+
+test("Postgres: cancellation/export ordering is atomic across multiple orders and shipments", async () => {
+  const db = await setup();
+  try {
+    const create = async () => {
+      const key = crypto.randomUUID();
+      await db.query("select submit_checkout($1,$2::jsonb)", [
+        key,
+        JSON.stringify(
+          payload([
+            delivery([{ productId: p1, quantity: 1 }]),
+            delivery([{ productId: p2, quantity: 1 }]),
+          ]),
+        ),
+      ]);
+      const id = (
+        await db.query<{ id: string }>(
+          "select id from checkouts where request_id=$1",
+          [key],
+        )
+      ).rows[0].id;
+      await db.query("select change_checkout($1,'pay',$2,'card')", [id, staff]);
+      const shipments = (
+        await db.query<{ id: string }>(
+          "select id from deliveries where checkout_id=$1 order by position",
+          [id],
+        )
+      ).rows.map((d) => d.id);
+      return { id, shipments };
+    };
+    const a = await create(),
+      b = await create();
+    // A file can be prepared from an earlier snapshot; commit must recheck the locked orders.
+    const selected = [a.shipments[0], b.shipments[0]];
+    const rows = await db.query<{ data: unknown[] }>(
+      "select export_rows($1,$2) as data",
+      [selected, staff],
+    );
+    assert.equal(rows.rows[0].data.length, 2);
+    await db.query("select change_checkout($1,'cancel',$2)", [a.id, staff]);
+    const failedBatch = crypto.randomUUID();
+    await assert.rejects(
+      db.query("select commit_export($1,$2,'test.xlsx','file',$3)", [
+        failedBatch,
+        selected,
+        staff,
+      ]),
+      /출력 대상 상태/,
+    );
+    assert.equal(
+      (await db.query("select * from export_batches")).rows.length,
+      0,
+    );
+    assert.equal(
+      (await db.query("select * from export_members")).rows.length,
+      0,
+    );
+    assert.ok(
+      (
+        await db.query<{ status: string }>("select status from deliveries")
+      ).rows.every((d) => d.status === "waiting"),
+    );
+    await assert.rejects(
+      db.query("select mark_shipped($1,$2)", [a.shipments, staff]),
+    );
+
+    const batch = crypto.randomUUID();
+    await db.query("select commit_export($1,$2,'test.xlsx','file',$3)", [
+      batch,
+      [b.shipments[0]],
+      staff,
+    ]);
+    const before = (
+      await db.query("select * from checkouts where id=$1", [b.id])
+    ).rows;
+    await assert.rejects(
+      db.query("select change_checkout($1,'cancel',$2)", [b.id, staff]),
+      /엑셀 출력된 배송지/,
+    );
+    assert.deepEqual(
+      (await db.query("select * from checkouts where id=$1", [b.id])).rows,
+      before,
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select * from stock_movements where checkout_id=$1 and reason='cancel'",
+          [b.id],
+        )
+      ).rows.length,
+      0,
+    );
+    assert.deepEqual(
+      (
+        await db.query(
+          "select status from deliveries where checkout_id=$1 order by position",
+          [b.id],
+        )
+      ).rows,
+      [{ status: "exported" }, { status: "waiting" }],
+    );
+    await db.query("select commit_export($1,$2,'test.xlsx','file',$3)", [
+      batch,
+      [b.shipments[0]],
+      staff,
+    ]);
+    assert.equal(
+      (await db.query("select * from export_members")).rows.length,
+      1,
+    );
+    await db.query("select mark_shipped($1,$2)", [[b.shipments[0]], staff]);
+    await assert.rejects(
+      db.query("select change_checkout($1,'cancel',$2)", [b.id, staff]),
+      /엑셀 출력된 배송지/,
+    );
+    // An export history still blocks cancellation if a delivery status was manually reset.
+    await db.query("update deliveries set status='waiting' where id=$1", [
+      b.shipments[0],
+    ]);
+    await assert.rejects(
+      db.query("select change_checkout($1,'cancel',$2)", [b.id, staff]),
+      /엑셀 출력된 배송지/,
+    );
+  } finally {
+    await db.close();
+  }
+});
+
 test("Postgres: notification outbox is opt-in, atomic, sender-only and idempotent", async () => {
   const db = await setup();
   try {
@@ -299,7 +594,7 @@ test("Postgres: discount per delivery, immutable totals, retry, stock and cancel
     await db.close();
   }
 });
-test("Postgres: paid cancellation blocked, export transaction, shipment retry and RLS", async () => {
+test("Postgres: exported cancellation blocked, export transaction, shipment retry and RLS", async () => {
   const db = await setup();
   try {
     await db.query("select submit_checkout($1,$2::jsonb)", [
@@ -336,9 +631,6 @@ test("Postgres: paid cancellation blocked, export transaction, shipment retry an
     assert.match(rows.rows[0].result[0].delivery.order_items[0].label, /3kg/);
 
     await db.query("select change_checkout($1,'pay',$2,'card')", [c, staff]);
-    await assert.rejects(
-      db.query("select change_checkout($1,'cancel',$2)", [c, staff]),
-    );
     await assert.rejects(db.query("select mark_shipped($1,$2)", [[d], staff]));
     await db.query("select commit_export($1,$2,'test.xlsx','file',$3)", [
       batch,
@@ -359,6 +651,10 @@ test("Postgres: paid cancellation blocked, export transaction, shipment retry an
     );
     await db.query("select mark_shipped($1,$2)", [[d], staff]);
     await db.query("select mark_shipped($1,$2)", [[d], staff]);
+    await assert.rejects(
+      db.query("select change_checkout($1,'cancel',$2)", [c, staff]),
+      /엑셀 출력된 배송지/,
+    );
     assert.equal(
       (
         await db.query<{ n: number }>(

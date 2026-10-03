@@ -255,7 +255,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
     .getByRole("button", { name: "상세", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "결제 전 취소", exact: true }),
+    page.getByRole("button", { name: "주문 취소", exact: true }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "주문 재접수", exact: true }).click();
   const addDelivery = page.getByRole("button", {
@@ -359,7 +359,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   await expect(
     page.getByLabel("배송지 1 운영 메모", { exact: true }),
   ).toHaveValue(reorderNote);
-  await page.getByRole("button", { name: "결제 전 취소", exact: true }).click();
+  await page.getByRole("button", { name: "주문 취소", exact: true }).click();
   await page.getByRole("button", { name: "확인", exact: true }).click();
   await expect(
     page.getByText("주문을 취소하고 차감 재고를 반환했습니다."),
