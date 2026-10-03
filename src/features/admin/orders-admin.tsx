@@ -472,6 +472,7 @@ export function OrdersAdmin({ section }: { section: string }) {
           {detail && (
             <OrderDetail
               order={detail}
+              canPrint={section === "counter" || section === "orders"}
               busy={busy}
               onPay={(paymentMethod) =>
                 act(

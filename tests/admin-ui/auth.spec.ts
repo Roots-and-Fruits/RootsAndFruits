@@ -108,6 +108,8 @@ for (const kind of ["tablet", "kakao"] as const) {
     expect((await page.request.get("/api/admin/orders")).status()).toBe(401);
     await page.goto("/namu-admin/orders");
     await expect(page).toHaveURL(/\/namu-admin\/login$/);
+    await page.goto("/namu-admin/print/10000000-0000-4000-8000-000000000001");
+    await expect(page).toHaveURL(/\/namu-admin\/login$/);
     await page.goto("/product");
     const request = {
       requestId: randomUUID(),

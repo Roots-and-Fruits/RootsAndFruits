@@ -65,6 +65,10 @@ Mac의 Wi-Fi 주소는 `ipconfig getifaddr en0`으로 확인할 수 있습니다
 고객 카카오 로그인은 `/login`, 태블릿 전용 로그인은 `/tablet-login`입니다. 추가 SQL·외부 인증 설정 및 `npm run tablet:create` 사용법은 [회원 인증 설정](docs/customer-auth-setup.md)을 참고하세요.
 서비스 비밀 키를 `NEXT_PUBLIC_*` 변수나 저장소에 넣지 마세요. 가상 상품은 운영 DB에 자동 등록하지 않습니다.
 
+### 주문서 인쇄
+
+영수증 프린터용 주문서는 카운터·주문 관리의 ‘주문서’ 버튼에서 출력합니다. SLK-TS100의 80mm 용지·72mm 인쇄 폭을 기준으로 하며, 드라이버와 브라우저 설정은 [주문서 인쇄 안내](docs/receipt-printing.md)를 참고하세요. 택배 엑셀 출력 상태에는 영향을 주지 않습니다.
+
 ### 링크 공유 미리보기
 
 - 카카오톡 등의 Open Graph와 X의 큰 이미지 카드에 공통 브랜드 이미지·제목·설명을 제공합니다.

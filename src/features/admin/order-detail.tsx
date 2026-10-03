@@ -12,6 +12,8 @@ import {
 import { formatWon } from "@/features/orders/calculations";
 import { PaymentAction } from "./payment-action";
 import { ReorderNotice } from "./order-notes";
+import { ReceiptLink } from "./receipt-link";
+import { summarizeOrderItems } from "./order-summary";
 export function OrderDetail({
   order: c,
   busy,
@@ -19,6 +21,7 @@ export function OrderDetail({
   onPay,
   onReorder,
   onNote,
+  canPrint = false,
 }: {
   order: Checkout;
   busy: boolean;
@@ -26,23 +29,12 @@ export function OrderDetail({
   onPay: (method: PaymentMethod) => Promise<string | null>;
   onReorder: () => void;
   onNote: (id: string, note: string) => void;
+  canPrint?: boolean;
 }) {
   const beforeExport =
     c.deliveries.length > 0 &&
     c.deliveries.every((d) => d.status === "waiting");
-  const aggregate = new Map<
-    string,
-    { label: string; quantity: number; amount: number }
-  >();
-  for (const d of c.deliveries)
-    for (const i of d.order_items) {
-      const old = aggregate.get(i.product_id);
-      aggregate.set(i.product_id, {
-        label: savedItemLabel(i, c.category),
-        quantity: (old?.quantity ?? 0) + i.quantity,
-        amount: (old?.amount ?? 0) + i.unit_price * i.quantity,
-      });
-    }
+  const aggregate = summarizeOrderItems(c);
   return (
     <div className="space-y-5 lg:text-sm">
       <p>
@@ -67,8 +59,8 @@ export function OrderDetail({
               : "비회원"}
       </p>
       <ul className="space-y-2 rounded-xl bg-secondary p-4">
-        {[...aggregate].map(([id, i]) => (
-          <li key={id} className="flex justify-between gap-4">
+        {aggregate.map((i) => (
+          <li key={i.key} className="flex justify-between gap-4">
             <span>
               {i.label} × {i.quantity}
             </span>
@@ -84,6 +76,7 @@ export function OrderDetail({
         <p className="text-2xl font-semibold">결제금액 {formatWon(c.total)}</p>
       </div>
       <div className="flex flex-wrap gap-3">
+        {canPrint && <ReceiptLink order={c} />}
         {c.status === "pending" && (
           <PaymentAction busy={busy} onConfirm={onPay} />
         )}

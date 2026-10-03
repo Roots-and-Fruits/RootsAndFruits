@@ -1,0 +1,131 @@
+.page {
+  padding: 24px 16px;
+}
+
+.toolbar {
+  max-width: 720px;
+  margin: 0 auto 24px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.message {
+  max-width: 720px;
+  margin: 24px auto;
+}
+
+/* SLK-TS100: 80mm paper, 72mm printable width (576 dots at 203dpi).
+   Let the printer driver choose the roll length; "80mm auto" is invalid CSS. */
+.receipt {
+  width: 72mm;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 3mm 0;
+  background: white;
+  color: black;
+  font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  font-size: 10pt;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+  box-shadow:
+    0 0 0 4mm white,
+    0 2px 24px #00000015;
+}
+
+.receipt p {
+  margin: 0;
+}
+.header {
+  text-align: center;
+  padding-bottom: 2mm;
+}
+.brand {
+  font-weight: 800;
+  font-size: 14pt;
+}
+.number {
+  font-size: 24pt;
+  line-height: 1.3;
+  font-weight: 800;
+  margin: 2mm 0;
+}
+.section {
+  border-top: 1px dashed black;
+  padding: 2mm 0;
+}
+.section h3 {
+  font-size: 11pt;
+  font-weight: 700;
+  margin: 0 0 1mm;
+  break-after: avoid;
+}
+.status {
+  font-weight: 800;
+  font-size: 12pt;
+}
+.items {
+  display: grid;
+  gap: 2mm;
+}
+.items li {
+  break-inside: avoid;
+}
+.itemLabel {
+  font-weight: 700;
+}
+.amountRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 2mm;
+}
+.amountRow > * {
+  white-space: nowrap;
+}
+.receipt .total {
+  margin-top: 1mm;
+  font-size: 12pt;
+}
+.deliveryItems {
+  margin-top: 1mm;
+}
+.deliveryItems li {
+  break-inside: avoid;
+}
+.receipt .note {
+  margin-top: 1mm;
+  font-weight: 700;
+  white-space: pre-wrap;
+}
+
+@page {
+  size: auto;
+  margin: 0;
+}
+
+@media print {
+  :global(html):has(.page),
+  :global(body):has(.page) {
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white;
+  }
+  :global(body):has(.page) > a,
+  .toolbar,
+  .message {
+    display: none !important;
+  }
+  .page {
+    margin: 0;
+    padding: 0;
+  }
+  .receipt {
+    box-shadow: none;
+  }
+}

@@ -128,7 +128,9 @@ export async function GET(request: Request, context: Context) {
         p_actor: staffUser.id,
       });
       checkDb(error);
-      return Response.json(data);
+      return Response.json(data, {
+        headers: { "Cache-Control": "private, no-store" },
+      });
     }
     if (path[0] === "exports") {
       if (path[1]) {
