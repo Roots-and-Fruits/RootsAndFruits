@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getStaff } from "@/features/admin/auth";
 import {
+  adminTimingLabel,
+  createAdminTiming,
+  type AdminTiming,
+} from "@/lib/admin-timing";
+import {
   readBody,
   apiError,
   checkDb,
@@ -33,8 +38,19 @@ const idsSchema = z
   .refine((a) => new Set(a).size === a.length);
 type Context = { params: Promise<{ path: string[] }> };
 export async function GET(request: Request, context: Context) {
+  const { path } = await context.params;
+  const timing = createAdminTiming(`api.${adminTimingLabel(path[0])}`);
+  const response = await readAdmin(request, context, timing);
+  timing.finish(response);
+  return response;
+}
+async function readAdmin(
+  request: Request,
+  context: Context,
+  timing: AdminTiming,
+) {
   try {
-    const staffUser = await getStaff();
+    const staffUser = await getStaff(timing);
     if (!staffUser) throw new HttpError("관리자 로그인이 필요합니다.", 401);
     const { path } = await context.params;
     const db = createServiceClient();
@@ -47,16 +63,24 @@ export async function GET(request: Request, context: Context) {
         .max(1000000)
         .parse(url.searchParams.get("page") || 0);
       const [settings, notifications] = await Promise.all([
-        db.from("notification_settings").select("enabled").eq("id", 1).single(),
-        db
-          .from("order_notifications")
-          .select(
-            "id,event,phone,payload,status,attempts,provider_id,error_code,created_at,updated_at",
-            { count: "exact" },
-          )
-          .order("created_at", { ascending: false })
-          .order("id")
-          .range(page * 30, page * 30 + 29),
+        timing.measure("db_notification_settings", () =>
+          db
+            .from("notification_settings")
+            .select("enabled")
+            .eq("id", 1)
+            .single(),
+        ),
+        timing.measure("db_notifications", () =>
+          db
+            .from("order_notifications")
+            .select(
+              "id,event,phone,payload,status,attempts,provider_id,error_code,created_at,updated_at",
+              { count: "exact" },
+            )
+            .order("created_at", { ascending: false })
+            .order("id")
+            .range(page * 30, page * 30 + 29),
+        ),
       ]);
       checkDb(settings.error);
       checkDb(notifications.error);
@@ -71,18 +95,20 @@ export async function GET(request: Request, context: Context) {
       );
     }
     if (path[0] === "products") {
-      const { data, error } = await db
-        .from("products")
-        .select("*")
-        .order("sort_order")
-        .order("id");
+      const { data, error } = await timing.measure("db_products", () =>
+        db.from("products").select("*").order("sort_order").order("id"),
+      );
       checkDb(error);
       return Response.json(data);
     }
     if (path[0] === "settings") {
       const [a, b] = await Promise.all([
-        db.from("delivery_settings").select("*").eq("id", 1).single(),
-        db.from("shipping_settings").select("*").eq("id", 1).single(),
+        timing.measure("db_delivery_settings", () =>
+          db.from("delivery_settings").select("*").eq("id", 1).single(),
+        ),
+        timing.measure("db_shipping_settings", () =>
+          db.from("shipping_settings").select("*").eq("id", 1).single(),
+        ),
       ]);
       checkDb(a.error);
       checkDb(b.error);
@@ -122,11 +148,13 @@ export async function GET(request: Request, context: Context) {
         .min(0)
         .max(1000000)
         .parse(url.searchParams.get("page") || 0);
-      const { data, error } = await db.rpc("list_checkouts", {
-        p_filters: filters,
-        p_page: page,
-        p_actor: staffUser.id,
-      });
+      const { data, error } = await timing.measure("db_orders", () =>
+        db.rpc("list_checkouts", {
+          p_filters: filters,
+          p_page: page,
+          p_actor: staffUser.id,
+        }),
+      );
       checkDb(error);
       return Response.json(data, {
         headers: { "Cache-Control": "private, no-store" },
@@ -134,11 +162,13 @@ export async function GET(request: Request, context: Context) {
     }
     if (path[0] === "exports") {
       if (path[1]) {
-        const { data, error } = await db
-          .from("export_batches")
-          .select("filename,file_base64")
-          .eq("id", uuid.parse(path[1]))
-          .single();
+        const { data, error } = await timing.measure("db_export_file", () =>
+          db
+            .from("export_batches")
+            .select("filename,file_base64")
+            .eq("id", uuid.parse(path[1]))
+            .single(),
+        );
         checkDb(error);
         return new Response(Buffer.from(data!.file_base64, "base64"), {
           headers: {
@@ -154,16 +184,20 @@ export async function GET(request: Request, context: Context) {
         .int()
         .min(0)
         .parse(url.searchParams.get("page") || 0);
-      const { data, error, count } = await db
-        .from("export_batches")
-        .select(
-          "id,filename,created_at,created_by,export_members(delivery_id,deliveries(recipient,status,checkouts(order_number)))",
-          { count: "exact" },
-        )
-        .order("created_at", { ascending: false })
-        .range(page * 30, page * 30 + 29);
+      const { data, error, count } = await timing.measure("db_exports", () =>
+        db
+          .from("export_batches")
+          .select(
+            "id,filename,created_at,created_by,export_members(delivery_id,deliveries(recipient,status,checkouts(order_number)))",
+            { count: "exact" },
+          )
+          .order("created_at", { ascending: false })
+          .range(page * 30, page * 30 + 29),
+      );
       checkDb(error);
-      const staff = await db.rpc("staff_directory");
+      const staff = await timing.measure("db_staff_directory", () =>
+        db.rpc("staff_directory"),
+      );
       checkDb(staff.error);
       const names = new Map(
         (staff.data as { user_id: string; username: string }[]).map((s) => [

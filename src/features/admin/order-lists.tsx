@@ -68,12 +68,12 @@ function PaymentStatus({
   return (
     <span
       className={cn(
-        "inline-flex w-fit items-center whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium",
+        "inline-flex w-fit items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-bold",
         status === "paid"
-          ? "bg-primary/10 text-primary"
+          ? "border-emerald-300 bg-emerald-100 text-emerald-900"
           : status === "cancelled"
-            ? "bg-muted text-muted-foreground"
-            : "bg-amber-50 text-amber-900",
+            ? "border-red-300 bg-red-100 text-red-800"
+            : "border-amber-300 bg-amber-100 text-amber-900",
       )}
     >
       {stateLabel[status]}

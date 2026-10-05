@@ -1,7 +1,8 @@
 "use client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { markAdminReady } from "./timing-client";
 import { AdminButton as Button } from "./admin-button";
 import { adminRequest } from "./client";
 import { CatalogAdmin } from "./catalog-admin";
@@ -18,6 +19,9 @@ const links = [
 export function AdminShell({ section }: { section: string }) {
   const router = useRouter();
   const [error, setError] = useState("");
+  useEffect(() => {
+    markAdminReady(section, "shell");
+  }, [section]);
   return (
     <div className="min-h-screen">
       <header className="border-b bg-card px-5 py-4 lg:px-8 lg:py-3">

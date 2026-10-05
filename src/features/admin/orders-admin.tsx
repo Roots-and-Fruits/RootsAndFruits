@@ -22,6 +22,7 @@ import {
 import { ConfirmAction } from "./confirm-action";
 import { OrderDetail } from "./order-detail";
 import { ReorderEditor } from "./reorder-editor";
+import { markAdminReady } from "./timing-client";
 const filterLabels = [
   ["number", "주문번호"],
   ["sender", "보내는 분"],
@@ -47,6 +48,9 @@ export function OrdersAdmin({ section }: { section: string }) {
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (!loading && !error) markAdminReady(section, "orders_committed");
+  }, [loading, error, section]);
   useEffect(() => {
     let live = true;
     const query = new URLSearchParams({ ...applied, page: String(page) });

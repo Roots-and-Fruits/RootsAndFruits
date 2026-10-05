@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Plus, PackageOpen } from "lucide-react";
+import { Minus, Plus, PackageCheck, PackageOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -44,6 +44,24 @@ export function ProductStep({
   }
   return (
     <div>
+      {experience && (
+        <aside
+          aria-label="체험 과일 포장·택배비 안내"
+          className="mb-4 flex items-start gap-3 rounded-xl border border-primary/25 bg-secondary px-4 py-3.5"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <PackageCheck aria-hidden="true" className="size-5" />
+          </span>
+          <div className="min-w-0 break-keep">
+            <h3 className="text-base font-bold leading-6 text-primary">
+              박스 포장비 + 택배비 포함
+            </h3>
+            <p className="mt-1 text-sm leading-6">
+              직접 수확한 과일을 포장해 보내드리는 금액이에요.
+            </p>
+          </div>
+        </aside>
+      )}
       {!experience && bundleDiscount > 0 && (
         <p className="mb-4 rounded-xl bg-secondary px-3 py-2.5 text-sm">
           이 배송지의 할인 대상 상품 2개마다 {formatWon(bundleDiscount)}{" "}
@@ -180,9 +198,6 @@ export function ProductStep({
           )}
         </strong>
       </div>
-      <p className="mt-2 text-right text-xs text-muted-foreground">
-        배송비가 포함된 금액이에요.
-      </p>
       {showActions && (
         <StepActions
           onBack={onBack}
