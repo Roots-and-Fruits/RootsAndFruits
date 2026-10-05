@@ -7,7 +7,7 @@ export class HttpError extends Error {
     super(message);
   }
 }
-export async function readBody(request: Request) {
+export function assertRequestOrigin(request: Request) {
   const originValue = request.headers.get("origin");
   const origin =
     originValue && URL.canParse(originValue) ? new URL(originValue) : null;
@@ -20,6 +20,9 @@ export async function readBody(request: Request) {
     origin.protocol !== `${protocol}:`
   )
     throw new HttpError("요청 출처를 확인할 수 없습니다.", 403);
+}
+export async function readBody(request: Request) {
+  assertRequestOrigin(request);
   const text = await request.text();
   if (text.length > 250000)
     throw new HttpError("요청 내용이 너무 큽니다.", 413);

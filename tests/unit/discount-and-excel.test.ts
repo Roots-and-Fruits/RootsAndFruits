@@ -79,9 +79,11 @@ test("discount pairs, mixed products, cap, disabled discount and shipment isolat
 });
 test("Excel preserves old column order, actual units, leading zeros and plain text", async () => {
   const checkout = {
+    order_number: 123,
     sender: { name: "=1+1", phone: "01012345678" },
   } as Checkout;
   const delivery = {
+    position: 2,
     recipient: {
       name: "수령인",
       phone: "01087654321",
@@ -103,6 +105,8 @@ test("Excel preserves old column order, actual units, leading zeros and plain te
     shippingHeaders,
   );
   assert.equal(sheet.getCell("N2").value, 4);
+  assert.equal(sheet.rowCount, 2);
+  assert.equal(sheet.getCell("O2").value, "123-2");
   assert.equal(sheet.getCell("C2").value, "01012345678");
   assert.equal(sheet.getCell("J2").value, "01234");
   assert.equal(sheet.getCell("B2").value, "=1+1");

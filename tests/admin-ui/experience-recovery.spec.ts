@@ -147,6 +147,7 @@ test("legacy experience descriptions appear consistently in counter, orders and 
     deliveries: [
       {
         id: "30000000-0000-4000-8000-000000000001",
+        tracking_numbers: [],
         position: 1,
         recipient: {
           name: "받는 분",

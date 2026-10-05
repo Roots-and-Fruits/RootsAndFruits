@@ -14,6 +14,7 @@ import { PaymentAction } from "./payment-action";
 import { ReorderNotice } from "./order-notes";
 import { ReceiptLink } from "./receipt-link";
 import { summarizeOrderItems } from "./order-summary";
+import { TrackingNumbers } from "./tracking-numbers";
 export function OrderDetail({
   order: c,
   busy,
@@ -105,6 +106,7 @@ export function OrderDetail({
               배송지 {d.position} · {d.recipient.name}
             </h3>
             <p>{d.recipient.phone}</p>
+            <TrackingNumbers numbers={d.tracking_numbers} />
             <p>
               ({d.recipient.postalCode}) {d.recipient.address}{" "}
               {d.recipient.addressDetail}

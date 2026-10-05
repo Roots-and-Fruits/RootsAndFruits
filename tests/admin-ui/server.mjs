@@ -22,6 +22,7 @@ for (const file of [
   "202610030001_order_notifications.sql",
   "202610030002_cancel_before_export.sql",
   "202610050001_shipping_worklist.sql",
+  "202610050002_delivery_tracking.sql",
 ])
   await db.exec(
     await readFile(join(root, "supabase/migrations", file), "utf8"),
@@ -269,6 +270,8 @@ const server = createServer(async (req, res) => {
         "staff_email",
         "list_checkouts",
         "list_shipping_work",
+        "preview_delivery_tracking",
+        "save_delivery_tracking",
         "save_product",
         "reorder_products",
         "save_settings",

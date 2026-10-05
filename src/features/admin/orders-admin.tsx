@@ -18,6 +18,7 @@ import { shippingRows } from "./shipping-work";
 import { OrderDetail } from "./order-detail";
 import { ReorderEditor } from "./reorder-editor";
 import { markAdminReady } from "./timing-client";
+import { CounterRefreshButton } from "./counter-refresh-button";
 const filterLabels = [
   ["number", "주문번호"],
   ["sender", "보내는 분"],
@@ -42,10 +43,13 @@ export function OrdersAdmin({ section }: { section: string }) {
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
     [loading, setLoading] = useState(true),
+    [refreshing, setRefreshing] = useState(false),
+    [listError, setListError] = useState(""),
     [loadFailed, setLoadFailed] = useState(false);
   useEffect(() => {
-    if (!loading && !error) markAdminReady(section, "orders_committed");
-  }, [loading, error, section]);
+    if (!loading && !error && !listError)
+      markAdminReady(section, "orders_committed");
+  }, [loading, error, listError, section]);
   useEffect(() => {
     let live = true;
     const controller = new AbortController();
@@ -66,16 +70,20 @@ export function OrdersAdmin({ section }: { section: string }) {
             );
           setServerTime(data.serverTime ?? "");
           setLoadFailed(false);
+          setListError("");
           setOrders(data.orders);
           setCount(data.count);
           setLoading(false);
+          setRefreshing(false);
         }
       })
       .catch((e) => {
         if (live) {
-          setError(e.message);
+          if (section === "counter") setListError(e.message);
+          else setError(e.message);
           setLoadFailed(true);
           setLoading(false);
+          setRefreshing(false);
         }
       });
     return () => {
@@ -107,6 +115,12 @@ export function OrdersAdmin({ section }: { section: string }) {
     setRevision((v) => v + 1);
     setDetail(null);
     setCatalogRevision((v) => v + 1);
+  };
+  const refreshCounter = () => {
+    if (loading || refreshing || busy || detail || reorder || document.hidden)
+      return;
+    setRefreshing(true);
+    setRevision((v) => v + 1);
   };
   async function act(path: string, body: unknown, message: string) {
     setBusy(true);
@@ -146,6 +160,17 @@ export function OrdersAdmin({ section }: { section: string }) {
           className="rounded-xl border border-destructive p-4 text-destructive"
         >
           {error}
+        </p>
+      )}
+      {listError && (
+        <p
+          role="alert"
+          className="rounded-xl border border-destructive p-4 text-destructive"
+        >
+          주문 목록을 갱신하지 못했습니다.{" "}
+          {orders.length > 0 && "이전 목록을 표시하고 있습니다. "}
+          {listError} 자동으로 다시 시도하며 새로고침 버튼으로도 재시도할 수
+          있습니다.
         </p>
       )}
       {notice && (
@@ -264,6 +289,7 @@ export function OrdersAdmin({ section }: { section: string }) {
               type="button"
               variant="outline"
               onClick={() => {
+                setLoading(true);
                 setFilters({});
                 setApplied({});
                 setPage(0);
@@ -271,9 +297,17 @@ export function OrdersAdmin({ section }: { section: string }) {
             >
               초기화
             </Button>
-            <Button type="button" variant="ghost" onClick={reload}>
-              새로고침
-            </Button>
+            {section === "counter" ? (
+              <CounterRefreshButton
+                paused={!!detail || !!reorder || busy}
+                refreshing={loading || refreshing}
+                onRefresh={refreshCounter}
+              />
+            ) : (
+              <Button type="button" variant="ghost" onClick={reload}>
+                새로고침
+              </Button>
+            )}
           </div>
         </form>
       )}
@@ -308,12 +342,17 @@ export function OrdersAdmin({ section }: { section: string }) {
             counter={section === "counter"}
             onOpen={setDetail}
           />
-          {!loading && !orders.length && <p>검색 결과가 없습니다.</p>}
+          {!loading && !loadFailed && !orders.length && (
+            <p>검색 결과가 없습니다.</p>
+          )}
           <div className="flex items-center gap-4">
             <Button
               variant="outline"
               disabled={page === 0}
-              onClick={() => setPage(page - 1)}
+              onClick={() => {
+                setLoading(true);
+                setPage(page - 1);
+              }}
             >
               이전
             </Button>
@@ -323,7 +362,10 @@ export function OrdersAdmin({ section }: { section: string }) {
             <Button
               variant="outline"
               disabled={(page + 1) * 30 >= count}
-              onClick={() => setPage(page + 1)}
+              onClick={() => {
+                setLoading(true);
+                setPage(page + 1);
+              }}
             >
               다음
             </Button>

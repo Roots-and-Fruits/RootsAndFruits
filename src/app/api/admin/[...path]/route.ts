@@ -24,6 +24,7 @@ import {
   type Shipment,
 } from "@/features/admin/schema";
 import { shippingFilename, shippingWorkbook } from "@/features/admin/excel";
+import { trackingSaveSchema } from "@/features/admin/tracking";
 import {
   scheduleNotifications,
   processNotifications,
@@ -353,6 +354,18 @@ export async function POST(request: Request, context: Context) {
         p_note: z.string().max(3000).parse(body.note),
         p_actor: staff.id,
       });
+    } else if (path[0] === "tracking" && path[1] === "save") {
+      const value = trackingSaveSchema.parse(body);
+      result = await db.rpc("save_delivery_tracking", {
+        p_changes: value.changes,
+        p_request: value.requestId,
+        p_actor: staff.id,
+      });
+      if (result.error && ["PGRST202", "42883"].includes(result.error.code))
+        throw new HttpError(
+          "송장번호 DB 업데이트가 필요합니다. 송장번호 SQL을 적용해주세요.",
+          503,
+        );
     } else if (path[0] === "ship") {
       result = await db.rpc("mark_shipped", {
         p_ids: idsSchema.parse(body.ids),

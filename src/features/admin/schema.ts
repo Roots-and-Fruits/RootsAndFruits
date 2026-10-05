@@ -119,6 +119,7 @@ export function savedItemLabel(
 }
 export type Shipment = {
   id: string;
+  tracking_numbers: string[];
   position: number;
   recipient: z.infer<typeof recipientSchema>;
   delivery_mode: "regular" | "scheduled";

@@ -14,6 +14,7 @@ import { AdminButton as Button } from "./admin-button";
 import { adminRequest } from "./client";
 import { ConfirmAction } from "./confirm-action";
 import { ExportHistory } from "./export-history";
+import { TrackingUpload } from "./tracking-upload";
 import { ShippingList } from "./order-lists";
 import type { Checkout } from "./schema";
 import {
@@ -153,7 +154,8 @@ export function ShippingWorkspace({
             출발 예정일 내림차순 · 전체 배송지 표시
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <TrackingUpload disabled={disabled} today={today} onReload={onReload} />
           <Button
             variant="outline"
             disabled={disabled}

@@ -49,6 +49,7 @@ async function setup(
     "202610030001_order_notifications.sql",
     "202610030002_cancel_before_export.sql",
     "202610050001_shipping_worklist.sql",
+    "202610050002_delivery_tracking.sql",
   ])
     if (
       (includeExperienceMigration ||
@@ -68,6 +69,195 @@ async function setup(
   );
   return db;
 }
+test("Postgres: tracking import handles multiple numbers, replacement, concurrency, permissions and notifications", async () => {
+  const db = await setup();
+  try {
+    await db.query("select configure_order_notifications(true,$1)", [staff]);
+    const request = crypto.randomUUID();
+    await db.query("select submit_checkout($1,$2::jsonb)", [
+      request,
+      JSON.stringify(
+        payload([
+          delivery([{ productId: p1, quantity: 2 }]),
+          delivery([{ productId: p2, quantity: 1 }]),
+        ]),
+      ),
+    ]);
+    const order = (
+      await db.query<{ id: string; order_number: number }>(
+        "select id,order_number from checkouts where request_id=$1",
+        [request],
+      )
+    ).rows[0];
+    const deliveries = (
+      await db.query<{ id: string }>(
+        "select id from deliveries where checkout_id=$1 order by position",
+        [order.id],
+      )
+    ).rows;
+    const first = deliveries[0].id,
+      second = deliveries[1].id;
+    const keys = [`${order.order_number}-1`, `${order.order_number}-2`];
+    const preview = async () =>
+      (
+        await db.query<{
+          result: {
+            id: string;
+            key: string;
+            version: number;
+            tracking_numbers: string[];
+            status: string;
+          }[];
+        }>("select preview_delivery_tracking($1,$2) result", [keys, staff])
+      ).rows[0].result;
+    const save = (
+      changes: unknown[],
+      id = crypto.randomUUID(),
+      actor = staff,
+    ) =>
+      db.query<{
+        result: { id: string; status: string; tracking_numbers: string[] }[];
+      }>("select save_delivery_tracking($1::jsonb,$2,$3) result", [
+        JSON.stringify(changes),
+        id,
+        actor,
+      ]);
+    const change = (
+      version: number,
+      numbers: string[],
+      mode = "add",
+      id = first,
+      key = keys[0],
+    ) => ({ id, key, version, numbers, mode });
+    await assert.rejects(save([change(0, ["001234567890"])]), /주문 상태/);
+    await db.query("select change_checkout($1,'pay',$2,'card')", [
+      order.id,
+      staff,
+    ]);
+    await assert.rejects(save([change(0, ["001234567890"])]), /주문 상태/);
+    await db.query("select commit_export($1,$2,$3,$4,$5)", [
+      crypto.randomUUID(),
+      [first, second],
+      "test.xlsx",
+      "",
+      staff,
+    ]);
+    const initial = [
+      change(0, ["001234567890", "001234567891", "001234567890"]),
+      change(0, ["002222222222"], "add", second, keys[1]),
+    ];
+    const saveRequest = crypto.randomUUID();
+    const saved = await save(initial, saveRequest);
+    assert.equal(saved.rows[0].result.length, 2);
+    assert.deepEqual((await preview())[0].tracking_numbers, [
+      "001234567890",
+      "001234567891",
+    ]);
+    assert.equal((await preview())[0].version, 1);
+    assert.equal(
+      (
+        await db.query(
+          "select * from order_notifications where event='shipped'",
+        )
+      ).rows.length,
+      0,
+    );
+    assert.equal(
+      (await db.query("select * from staff_events where action='tracking'"))
+        .rows.length,
+      2,
+    );
+    assert.deepEqual(await save(initial, saveRequest), saved);
+    await assert.rejects(save([change(0, ["9"])], saveRequest), /같은 송장/);
+    await assert.rejects(save([change(0, ["9"])]), /다른 관리자/);
+    await assert.rejects(
+      save([change(1, ["9"], "replace", first, keys[1])]),
+      /주문 상태/,
+    );
+    await assert.rejects(
+      save([change(1, ["9"])], crypto.randomUUID(), crypto.randomUUID()),
+      /관리자/,
+    );
+    await assert.rejects(save([change(1, ["invalid"])]), /숫자로/);
+    // Fresh repeat is a no-op and does not increment versions or audit events.
+    await save([change(1, ["001234567890", "001234567891"])]);
+    assert.equal((await preview())[0].version, 1);
+    assert.equal(
+      (await db.query("select * from staff_events where action='tracking'"))
+        .rows.length,
+      2,
+    );
+    // A stale second row rolls back the whole save, including the first row.
+    await assert.rejects(
+      save([
+        change(1, ["003333333333"]),
+        change(0, ["4"], "replace", second, keys[1]),
+      ]),
+      /다른 관리자/,
+    );
+    assert.equal((await preview())[0].version, 1);
+    const replacement = [change(1, ["000000000009"], "replace")];
+    const replacementRequest = crypto.randomUUID();
+    await save(replacement, replacementRequest);
+    assert.deepEqual((await preview())[0].tracking_numbers, ["000000000009"]);
+    await save([change(2, ["000000000008"])]);
+    await save(replacement, replacementRequest); // Lost response must not undo a later addition.
+    assert.deepEqual((await preview())[0].tracking_numbers, [
+      "000000000008",
+      "000000000009",
+    ]);
+    const list = (
+      await db.query<{
+        result: { orders: { deliveries: { tracking_numbers: string[] }[] }[] };
+      }>("select list_checkouts('{}',0,$1) result", [staff])
+    ).rows[0].result;
+    assert.deepEqual(list.orders[0].deliveries[0].tracking_numbers, [
+      "000000000008",
+      "000000000009",
+    ]);
+    const work = (
+      await db.query<{
+        result: { orders: { deliveries: { tracking_numbers: string[] }[] }[] };
+      }>("select list_shipping_work($1) result", [staff])
+    ).rows[0].result;
+    assert.deepEqual(
+      work.orders[0].deliveries[0].tracking_numbers,
+      list.orders[0].deliveries[0].tracking_numbers,
+    );
+    await db.query("select mark_shipped($1,$2)", [[first, second], staff]);
+    await db.query("select mark_shipped($1,$2)", [[first, second], staff]);
+    await save([change(3, ["777777777777"], "replace")]);
+    assert.equal((await preview())[0].status, "shipped");
+    assert.equal(
+      (
+        await db.query(
+          "select * from order_notifications where event='shipped'",
+        )
+      ).rows.length,
+      2,
+    );
+    await db.exec("set role anon");
+    await assert.rejects(
+      db.query("select * from delivery_tracking_numbers"),
+      /permission/,
+    );
+    await assert.rejects(
+      db.query("select preview_delivery_tracking($1,$2)", [keys, staff]),
+      /permission/,
+    );
+    await db.exec("reset role");
+    // Re-applying SQL preserves tracking and notification history.
+    await db.exec(
+      await readFile(
+        "supabase/migrations/202610050002_delivery_tracking.sql",
+        "utf8",
+      ),
+    );
+    assert.deepEqual((await preview())[0].tracking_numbers, ["777777777777"]);
+  } finally {
+    await db.close();
+  }
+});
 test("Postgres: cancellation upgrade preserves history, accepts paid orders and restores stock once", async () => {
   const db = await setup(true, true, false);
   try {

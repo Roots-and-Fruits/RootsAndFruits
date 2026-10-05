@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { formatWon } from "@/features/orders/calculations";
 import { AdminButton } from "./admin-button";
 import { OrderNotes } from "./order-notes";
+import { TrackingNumbers } from "./tracking-numbers";
 import { ReceiptLink } from "./receipt-link";
 import { summarizeOrderItems } from "./order-summary";
 import {
@@ -264,6 +265,7 @@ export function ShippingList({
                 {d.recipient.address} {d.recipient.addressDetail}
               </p>
               <OrderNotes order={c} delivery={d} />
+              <TrackingNumbers numbers={d.tracking_numbers} />
             </div>
             <p className="tabular-nums">
               <span className="mr-2 text-muted-foreground lg:hidden">출발</span>

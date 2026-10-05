@@ -2,6 +2,12 @@
 
 이 단계는 새 개발 프로젝트를 기준으로 합니다. 기존 프로젝트의 데이터는 옮기지 않습니다.
 
+송장번호 업로드 추가 적용: 기존 마이그레이션이 적용되어 있다면
+`supabase/migrations/202610050002_delivery_tracking.sql` 전체를 SQL Editor에서 실행합니다.
+이 SQL은 배송지별 송장번호와 저장 요청 결과 테이블, 동시 변경 확인용 버전 및 관리자 함수를 추가합니다.
+기존 주문·상품·출력 파일·주문번호·문자 내역은 삭제하거나 초기화하지 않습니다. SQL 실행 자체로 문자를 보내지 않습니다.
+실행 후 발송관리를 새로고침하고 ‘송장번호 업로드’를 사용합니다. 식별자가 없는 이전 파일은 자동으로 연결되지 않으므로 새 접수 엑셀부터 사용합니다.
+
 1. Supabase 대시보드에서 새 프로젝트를 생성합니다. 데이터베이스 비밀번호는 개인 비밀번호 관리자에 보관합니다.
 2. SQL Editor에서 아래 파일을 순서대로 **각각 한 번만** 실행합니다. 이미 적용한 파일을 재실행하지 않습니다.
    - `supabase/migrations/202609200001_catalog.sql`
@@ -13,6 +19,7 @@
    - `supabase/migrations/202610030001_order_notifications.sql`
    - `supabase/migrations/202610030002_cancel_before_export.sql`
    - `supabase/migrations/202610050001_shipping_worklist.sql`
+   - `supabase/migrations/202610050002_delivery_tracking.sql`
 3. 프로젝트 URL과 API Keys의 Publishable key·Secret key를 `.env.local`에 추가합니다. 기존 미리보기 설정은 덮어쓰지 않습니다.
 
    ```dotenv

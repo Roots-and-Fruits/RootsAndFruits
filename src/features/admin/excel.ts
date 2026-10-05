@@ -66,7 +66,7 @@ export async function shippingWorkbook(
         .join(", "),
       "",
       d.order_items.reduce((s, i) => s + i.quantity, 0),
-      "",
+      `${c.order_number}-${d.position}`,
       "",
       "",
       "",
