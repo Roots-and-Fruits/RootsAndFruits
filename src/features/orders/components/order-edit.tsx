@@ -224,7 +224,7 @@ export function OrderEdit({
                   )}
                 />
               </div>
-              {category === "product" ? (
+              {category === "product" && (
                 <div>
                   <h3 className="mb-5 font-semibold">배송 일정</h3>
                   <DeliveryDateStep
@@ -249,10 +249,6 @@ export function OrderEdit({
                     }}
                   />
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  체험 상품은 별도 날짜 선택 없이 일반 배송으로 보내드려요.
-                </p>
               )}
             </section>
           );

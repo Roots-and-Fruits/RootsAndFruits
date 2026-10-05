@@ -127,11 +127,13 @@ export function OrderReview({
               <br />
               {delivery.recipient.addressDetail}
             </p>
-            <p className="mt-3 text-xs text-muted-foreground">
-              {delivery.deliveryMode === "regular"
-                ? "일반 배송 · 가능한 빠르게 보내드려요"
-                : `예약 배송 · ${delivery.requestedDate}`}
-            </p>
+            {category === "product" && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {delivery.deliveryMode === "regular"
+                  ? "일반 배송 · 가능한 빠르게 보내드려요"
+                  : `예약 배송 · ${delivery.requestedDate}`}
+              </p>
+            )}
             <ul className="mt-4 space-y-3 border-t border-border pt-4">
               {delivery.items.map((item) => {
                 const product = byId.get(item.productId)!;
@@ -203,7 +205,7 @@ export function OrderReview({
       <div className="mt-8 flex items-end justify-between gap-3 border-t border-border pt-6">
         <div>
           <p className="text-xs text-muted-foreground">
-            배송지 {deliveries.length}곳 · 배송비 포함
+            배송지 {deliveries.length}곳
           </p>
           <p className="mt-2 font-semibold">총 결제금액</p>
         </div>

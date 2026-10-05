@@ -1,6 +1,6 @@
 // Isolated UI test server. Never imported by the app; all data is fictional.
 import { createServer } from "node:http";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, generateKeyPairSync, sign } from "node:crypto";
 import { cp, mkdtemp, symlink, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -64,30 +64,56 @@ const users = [
   user_metadata: {},
 }));
 const fixtureExpiry = Math.floor(Date.now() / 1000) + 3600;
-function tokenFor(user) {
-  return [
-    { alg: "HS256", typ: "JWT" },
-    {
-      sub: user.id,
-      role: "authenticated",
-      aud: "authenticated",
-      exp: fixtureExpiry,
-    },
-    "test-only",
-  ]
-    .map((x) =>
-      Buffer.from(typeof x === "string" ? x : JSON.stringify(x)).toString(
-        "base64url",
-      ),
-    )
+const { privateKey: signingKey, publicKey: verificationKey } =
+  generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+const jwk = {
+  ...verificationKey.export({ format: "jwk" }),
+  kid: "isolated-test",
+  alg: "ES256",
+  use: "sig",
+};
+const issuedTokens = new Map(),
+  defaultTokens = new Map(),
+  authReads = new Map();
+function issueToken(user, exp = fixtureExpiry, mode = "normal") {
+  const header =
+    mode === "legacy"
+      ? { alg: "HS256", typ: "JWT" }
+      : { alg: "ES256", typ: "JWT", kid: jwk.kid };
+  const payload = {
+    sub: user.id,
+    role: "authenticated",
+    aud: "authenticated",
+    exp,
+    jti: randomUUID(),
+  };
+  const input = [header, payload]
+    .map((part) => Buffer.from(JSON.stringify(part)).toString("base64url"))
     .join(".");
+  const signature =
+    mode === "legacy"
+      ? Buffer.from("test-only")
+      : sign("sha256", Buffer.from(input), {
+          key: signingKey,
+          dsaEncoding: "ieee-p1363",
+        });
+  const token = `${input}.${signature.toString("base64url")}`;
+  issuedTokens.set(token, { user, exp, mode });
+  return token;
 }
-function sessionFor(user) {
+function tokenFor(user) {
+  if (!defaultTokens.has(user.id)) defaultTokens.set(user.id, issueToken(user));
+  return defaultTokens.get(user.id);
+}
+function sessionFor(user, mode = "normal") {
+  const exp =
+    mode === "expired" ? Math.floor(Date.now() / 1000) - 120 : fixtureExpiry;
   return {
-    access_token: tokenFor(user),
+    access_token:
+      mode === "normal" ? tokenFor(user) : issueToken(user, exp, mode),
     refresh_token: `refresh-${user.id}`,
     expires_in: 3600,
-    expires_at: Math.floor(Date.now() / 1000) + 3600,
+    expires_at: exp,
     token_type: "bearer",
     user,
   };
@@ -102,12 +128,26 @@ function send(res, data, status = 200, headers = {}) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   const auth = req.headers.authorization?.slice(7);
-  const user = users.find((u) => tokenFor(u) === auth);
+  const issued = issuedTokens.get(auth);
+  const user =
+    issued && issued.exp > Date.now() / 1000 && issued.mode !== "revoked"
+      ? issued.user
+      : undefined;
   let body = {};
   try {
     let raw = "";
     for await (const chunk of req) raw += chunk;
     if (raw) body = JSON.parse(raw);
+    // Local test fixtures only; this server never loads real Supabase settings.
+    if (url.pathname === "/__test/auth-session")
+      return send(
+        res,
+        sessionFor(users[0], url.searchParams.get("mode") || "normal"),
+      );
+    if (url.pathname === "/__test/auth-reads")
+      return send(res, { count: authReads.get(auth) || 0 });
+    if (url.pathname === "/auth/v1/.well-known/jwks.json")
+      return send(res, { keys: [jwk] });
     if (url.pathname === "/auth/v1/authorize") {
       const redirect = new URL(url.searchParams.get("redirect_to"));
       if (
@@ -123,6 +163,14 @@ const server = createServer(async (req, res) => {
       return res.end();
     }
     if (url.pathname === "/auth/v1/token") {
+      if (url.searchParams.get("grant_type") === "refresh_token") {
+        const refreshed = users.find(
+          (u) => body.refresh_token === `refresh-${u.id}`,
+        );
+        return refreshed
+          ? send(res, sessionFor(refreshed))
+          : send(res, { msg: "Invalid refresh token" }, 400);
+      }
       if (url.searchParams.get("grant_type") === "pkce") {
         const challenge = oauthCodes.get(body.auth_code);
         if (
@@ -140,14 +188,17 @@ const server = createServer(async (req, res) => {
         ? send(res, sessionFor(matched))
         : send(res, { msg: "Invalid credentials" }, 400);
     }
-    if (url.pathname === "/auth/v1/user")
+    if (url.pathname === "/auth/v1/user") {
+      authReads.set(auth, (authReads.get(auth) || 0) + 1);
       return user ? send(res, user) : send(res, { msg: "No session" }, 401);
+    }
     if (url.pathname === "/auth/v1/logout") return send(res, {});
     const rpc = url.pathname.startsWith("/rest/v1/rpc/")
       ? url.pathname.split("/").at(-1)
       : null;
     if (rpc) {
-      if (rpc === "is_staff") return send(res, user?.id === staff);
+      if (rpc === "is_staff")
+        return send(res, user?.id === staff && issued?.mode !== "role-removed");
       if (auth !== serviceKey)
         return send(res, { message: "forbidden", code: "42501" }, 403);
       const allowed = [

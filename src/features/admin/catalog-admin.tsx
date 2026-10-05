@@ -303,7 +303,7 @@ function ProductForm({
         </div>
         <LabeledInput
           id="price"
-          label="가격 (원, 배송비 포함)"
+          label="가격 (원)"
           type="number"
           {...register("price", { valueAsNumber: true })}
           error={errors.price?.message}

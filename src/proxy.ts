@@ -28,7 +28,12 @@ export async function proxy(request: NextRequest) {
     process.env.ADMIN_TIMING === "true" && request.method === "GET" && isAdmin,
   );
   try {
-    await timing.measure("proxy_auth", () => client.auth.getUser());
+    // Admin pages/API still verify the live user and staff role in getStaff.
+    // Here we only refresh/verify the token; asymmetric JWTs use cached JWKS.
+    await timing.measure("proxy_auth", async () => {
+      if (isAdmin) await client.auth.getClaims();
+      else await client.auth.getUser();
+    });
   } finally {
     timing.finish();
   }

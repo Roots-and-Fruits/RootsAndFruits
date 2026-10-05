@@ -46,7 +46,7 @@ export function ProductStep({
     <div>
       {experience && (
         <aside
-          aria-label="체험 과일 포장·택배비 안내"
+          aria-label="체험 과일 포장 안내"
           className="mb-4 flex items-start gap-3 rounded-xl border border-primary/25 bg-secondary px-4 py-3.5"
         >
           <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
@@ -54,7 +54,7 @@ export function ProductStep({
           </span>
           <div className="min-w-0 break-keep">
             <h3 className="text-base font-bold leading-6 text-primary">
-              박스 포장비 + 택배비 포함
+              박스 포장비 포함
             </h3>
             <p className="mt-1 text-sm leading-6">
               직접 수확한 과일을 포장해 보내드리는 금액이에요.

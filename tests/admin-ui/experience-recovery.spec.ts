@@ -72,9 +72,7 @@ test("legacy experience fields do not silently block editing and failed saves re
   await page
     .getByLabel("상품 내용", { exact: true })
     .fill(`${description} 수정`);
-  await page
-    .getByLabel("가격 (원, 배송비 포함)", { exact: true })
-    .fill("12000");
+  await page.getByLabel("가격 (원)", { exact: true }).fill("12000");
   await page.route(
     "**/api/admin/products",
     async (route) => {

@@ -36,9 +36,7 @@ test("experience form, flat sorting, customer selection, order and category conv
     page.getByText("상품 내용을 입력해주세요.", { exact: true }),
   ).toBeVisible();
   await page.getByLabel("상품 내용", { exact: true }).fill(description);
-  await page
-    .getByLabel("가격 (원, 배송비 포함)", { exact: true })
-    .fill("10000");
+  await page.getByLabel("가격 (원)", { exact: true }).fill("10000");
   await page.screenshot({
     path: testInfo.outputPath("experience-form.png"),
     fullPage: true,

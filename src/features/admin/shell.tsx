@@ -1,13 +1,10 @@
 "use client";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { markAdminReady } from "./timing-client";
+import { usePathname, useRouter } from "next/navigation";
+import Link, { useLinkStatus } from "next/link";
+import { useState } from "react";
+import { LoaderCircle } from "lucide-react";
 import { AdminButton as Button } from "./admin-button";
 import { adminRequest } from "./client";
-import { CatalogAdmin } from "./catalog-admin";
-import { OrdersAdmin } from "./orders-admin";
-import { NotificationsAdmin } from "./notifications-admin";
 const links = [
   ["counter", "카운터"],
   ["orders", "주문 관리"],
@@ -16,12 +13,19 @@ const links = [
   ["settings", "설정"],
   ["notifications", "문자 내역"],
 ];
-export function AdminShell({ section }: { section: string }) {
+function NavigationPending() {
+  const { pending } = useLinkStatus();
+  return (
+    <LoaderCircle
+      aria-hidden="true"
+      className={`absolute right-1 top-1 size-3 motion-safe:animate-spin ${pending ? "opacity-100" : "opacity-0"}`}
+    />
+  );
+}
+export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const section = usePathname().split("/")[2];
   const [error, setError] = useState("");
-  useEffect(() => {
-    markAdminReady(section, "shell");
-  }, [section]);
   return (
     <div className="min-h-screen">
       <header className="border-b bg-card px-5 py-4 lg:px-8 lg:py-3">
@@ -56,9 +60,10 @@ export function AdminShell({ section }: { section: string }) {
                 key={key}
                 href={`/namu-admin/${key}`}
                 aria-current={section === key ? "page" : undefined}
-                className={`rounded-lg px-4 py-3 text-sm transition-colors lg:px-3 lg:py-2 ${section === key ? "bg-primary text-primary-foreground" : "bg-secondary lg:bg-transparent lg:hover:bg-secondary"}`}
+                className={`relative rounded-lg px-4 py-3 text-sm transition-colors lg:px-3 lg:py-2 ${section === key ? "bg-primary text-primary-foreground" : "bg-secondary lg:bg-transparent lg:hover:bg-secondary"}`}
               >
                 {label}
+                <NavigationPending />
               </Link>
             ))}
           </nav>
@@ -72,13 +77,7 @@ export function AdminShell({ section }: { section: string }) {
           {links.find(([key]) => key === section)?.[1]}
         </h1>
         {error && <p role="alert">{error}</p>}
-        {section === "notifications" ? (
-          <NotificationsAdmin />
-        ) : section === "products" || section === "settings" ? (
-          <CatalogAdmin key={section} section={section} />
-        ) : (
-          <OrdersAdmin key={section} section={section} />
-        )}
+        {children}
       </main>
     </div>
   );

@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getStaff } from "@/features/admin/auth";
-import { AdminShell } from "@/features/admin/shell";
+import { AdminSectionContent } from "@/features/admin/section-content";
 import { adminTimingLabel, createAdminTiming } from "@/lib/admin-timing";
 export const dynamic = "force-dynamic";
 export default async function AdminSection({
@@ -28,5 +28,5 @@ export default async function AdminSection({
     ].includes(section)
   )
     notFound();
-  return <AdminShell section={section} />;
+  return <AdminSectionContent key={section} section={section} />;
 }

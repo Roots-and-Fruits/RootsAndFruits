@@ -15,16 +15,18 @@ import type { Sender, DeliveryDraft } from "@/features/orders/schema";
 import type { Product } from "@/features/catalog/types";
 export function ReorderEditor({
   original,
-  products,
   onClose,
   onDone,
 }: {
   original: Checkout;
-  products: AdminProduct[];
   onClose: () => void;
   onDone: (n: number) => void;
 }) {
   const [settings, setSettings] = useState<Settings | null>(null),
+    [products, setProducts] = useState<AdminProduct[]>([]),
+    [loaded, setLoaded] = useState(false),
+    [loadError, setLoadError] = useState(""),
+    [loadAttempt, setLoadAttempt] = useState(0),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [draft, setDraft] = useState<{
@@ -45,10 +47,24 @@ export function ReorderEditor({
         })),
     }));
   useEffect(() => {
-    adminRequest<Settings>("settings")
-      .then(setSettings)
-      .catch((e) => setError(e.message));
-  }, []);
+    let live = true;
+    const controller = new AbortController();
+    Promise.all([
+      adminRequest<Settings>("settings", undefined, controller.signal),
+      adminRequest<AdminProduct[]>("products", undefined, controller.signal),
+    ])
+      .then(([settings, products]) => {
+        if (!live) return;
+        setSettings(settings);
+        setProducts(products);
+        setLoaded(true);
+      })
+      .catch((e) => live && setLoadError(e.message));
+    return () => {
+      live = false;
+      controller.abort();
+    };
+  }, [loadAttempt]);
   const [pending, setPending] = useState<string | null>(() =>
     getPendingSubmission(`admin:${original.id}`),
   );
@@ -156,6 +172,30 @@ export function ReorderEditor({
         </p>
       )}
       {busy && <p role="status">재접수 처리 중…</p>}
+      {!loaded && (
+        <div className="space-y-3">
+          {loadError ? (
+            <>
+              <p role="alert" className="text-destructive">
+                {loadError}
+              </p>
+              <Button
+                onClick={() => {
+                  setLoadError("");
+                  setLoadAttempt((v) => v + 1);
+                }}
+              >
+                상품·설정 다시 불러오기
+              </Button>
+            </>
+          ) : (
+            <p role="status">재접수에 필요한 상품·설정을 불러오는 중…</p>
+          )}
+          <Button variant="outline" onClick={onClose}>
+            목록으로 돌아가기
+          </Button>
+        </div>
+      )}
       {pending && (
         <Button
           disabled={busy}
@@ -164,7 +204,7 @@ export function ReorderEditor({
           보낸 재접수 요청의 결과 확인
         </Button>
       )}
-      {settings && (
+      {loaded && settings && (
         <fieldset disabled={busy || !!pending}>
           <OrderEdit
             submitLabel="새 주문으로 접수"

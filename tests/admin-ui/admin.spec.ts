@@ -64,9 +64,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
     .getByLabel("과일 종류", { exact: true })
     .fill(`테스트${testInfo.project.name}`);
   await page.getByLabel("상품 내용", { exact: true }).fill("브라우저 등록");
-  await page
-    .getByLabel("가격 (원, 배송비 포함)", { exact: true })
-    .fill("12000");
+  await page.getByLabel("가격 (원)", { exact: true }).fill("12000");
   await page.getByText("묶음 배송 할인 대상", { exact: true }).click();
   await page.getByRole("button", { name: "저장", exact: true }).click();
   await expect(page.getByText("상품을 저장했습니다.")).toBeVisible();

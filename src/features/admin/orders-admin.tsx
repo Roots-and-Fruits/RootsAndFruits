@@ -33,7 +33,9 @@ const filterLabels = [
 export function OrdersAdmin({ section }: { section: string }) {
   const [orders, setOrders] = useState<Checkout[]>([]),
     [count, setCount] = useState(0),
-    [products, setProducts] = useState<AdminProduct[]>([]),
+    [products, setProducts] = useState<AdminProduct[] | null>(null),
+    [catalogError, setCatalogError] = useState(""),
+    [catalogRevision, setCatalogRevision] = useState(0),
     [batches, setBatches] = useState<ExportBatch[]>([]),
     [batchCount, setBatchCount] = useState(0),
     [batchPage, setBatchPage] = useState(0),
@@ -53,16 +55,17 @@ export function OrdersAdmin({ section }: { section: string }) {
   }, [loading, error, section]);
   useEffect(() => {
     let live = true;
+    const controller = new AbortController();
     const query = new URLSearchParams({ ...applied, page: String(page) });
-    Promise.all([
-      adminRequest<{ orders: Checkout[]; count: number }>(`orders?${query}`),
-      adminRequest<AdminProduct[]>("products"),
-    ])
-      .then(([data, catalog]) => {
+    adminRequest<{ orders: Checkout[]; count: number }>(
+      `orders?${query}`,
+      undefined,
+      controller.signal,
+    )
+      .then((data) => {
         if (live) {
           setOrders(data.orders);
           setCount(data.count);
-          setProducts(catalog);
           setLoading(false);
         }
       })
@@ -74,8 +77,27 @@ export function OrdersAdmin({ section }: { section: string }) {
       });
     return () => {
       live = false;
+      controller.abort();
     };
   }, [page, applied, revision]);
+  useEffect(() => {
+    // The counter displays order snapshots; only filter menus need the catalog.
+    if (section === "counter") return;
+    let live = true;
+    const controller = new AbortController();
+    adminRequest<AdminProduct[]>("products", undefined, controller.signal)
+      .then((catalog) => {
+        if (live) {
+          setProducts(catalog);
+          setCatalogError("");
+        }
+      })
+      .catch((e) => live && setCatalogError(e.message));
+    return () => {
+      live = false;
+      controller.abort();
+    };
+  }, [section, catalogRevision]);
   useEffect(() => {
     if (section !== "shipping") return;
     let live = true;
@@ -94,10 +116,12 @@ export function OrdersAdmin({ section }: { section: string }) {
     };
   }, [section, revision, batchPage]);
   const reload = () => {
+    setError("");
     setLoading(true);
     setRevision((v) => v + 1);
     setSelected([]);
     setDetail(null);
+    setCatalogRevision((v) => v + 1);
   };
   async function act(path: string, body: unknown, message: string) {
     setBusy(true);
@@ -151,7 +175,6 @@ export function OrdersAdmin({ section }: { section: string }) {
     return (
       <ReorderEditor
         original={reorder}
-        products={products}
         onClose={() => setReorder(null)}
         onDone={(number) => {
           setReorder(null);
@@ -194,6 +217,7 @@ export function OrdersAdmin({ section }: { section: string }) {
         className={`grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-2 lg:gap-x-5 lg:gap-y-3 ${section === "counter" ? "lg:grid-cols-[16rem_auto]" : "lg:grid-cols-4"}`}
         onSubmit={(e) => {
           e.preventDefault();
+          setError("");
           setPage(0);
           setApplied({ ...filters });
           setSelected([]);
@@ -256,18 +280,39 @@ export function OrdersAdmin({ section }: { section: string }) {
               상품
               <AdminSelect
                 value={filters.product || ""}
+                disabled={products === null}
                 onChange={(e) =>
                   setFilters({ ...filters, product: e.target.value })
                 }
               >
-                <option value="">전체</option>
-                {products.map((p) => (
+                <option value="">
+                  {products === null
+                    ? catalogError
+                      ? "상품 목록 조회 실패"
+                      : "상품 목록 불러오는 중…"
+                    : "전체"}
+                </option>
+                {(products ?? []).map((p) => (
                   <option key={p.id} value={p.id!}>
                     {adminProductLabel(p)}
                   </option>
                 ))}
               </AdminSelect>
+              {catalogError && (
+                <span role="alert" className="text-xs text-destructive">
+                  상품 검색 목록: {catalogError}
+                </span>
+              )}
             </label>
+            {catalogError && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCatalogRevision((v) => v + 1)}
+              >
+                상품 목록 다시 불러오기
+              </Button>
+            )}
           </>
         )}
         <div
