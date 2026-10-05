@@ -48,6 +48,7 @@ async function setup(
     "202610020002_payment_method.sql",
     "202610030001_order_notifications.sql",
     "202610030002_cancel_before_export.sql",
+    "202610050001_shipping_worklist.sql",
   ])
     if (
       (includeExperienceMigration ||
@@ -1523,6 +1524,68 @@ test("Postgres: payment methods, validation, retries, permissions and historical
         )
       ).rows[0].allowed,
       true,
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+test("Postgres: shipping worklist has no page cap, keeps full order detail and excludes non-work", async () => {
+  const db = await setup();
+  try {
+    await db.exec(`
+      insert into checkouts(request_id,request_payload,category,sender,status)
+      select gen_random_uuid(),'{}','product','{"name":"가상 발송인","phone":"01012345678"}',
+        case when n=351 then 'pending' when n=352 then 'cancelled' else 'paid' end
+      from generate_series(1,353) n;
+      insert into deliveries(checkout_id,position,recipient,delivery_mode,requested_date,processing_date,discount_unit,status)
+      select id,1,'{"name":"가상 수령인"}','scheduled','2026-10-09',
+        '2026-10-03'::date+(order_number%6)::integer,0,
+        case when order_number=353 then 'shipped' when order_number%2=0 then 'exported' else 'waiting' end
+      from checkouts;
+      insert into deliveries(checkout_id,position,recipient,delivery_mode,requested_date,processing_date,discount_unit,status)
+      select id,2,'{"name":"발송된 다른 배송지"}','regular','2026-10-02','2026-10-01',0,'shipped'
+      from checkouts where order_number=1;
+    `);
+    type Result = {
+      count: number;
+      orders: {
+        order_number: number;
+        deliveries: { id: string; status: string; processing_date: string }[];
+        request_payload?: unknown;
+      }[];
+    };
+    const result = (
+      await db.query<{ result: Result }>(
+        "select list_shipping_work($1) as result",
+        [staff],
+      )
+    ).rows[0].result;
+    assert.equal(result.count, 350);
+    assert.equal(result.orders.length, 350);
+    assert.equal(result.orders[0].deliveries.length, 2);
+    assert.equal(result.orders[0].deliveries[1].status, "shipped");
+    assert.equal(
+      result.orders.some((c) => c.order_number > 350),
+      false,
+    );
+    assert.equal(result.orders[0].request_payload, undefined);
+    await assert.rejects(
+      db.query("select list_shipping_work($1)", [crypto.randomUUID()]),
+    );
+    const ids = result.orders.flatMap((c) => c.deliveries.map((d) => d.id));
+    const exported = (
+      await db.query<{ result: { delivery: { processing_date: string } }[] }>(
+        "select export_rows($1,$2) as result",
+        [ids, staff],
+      )
+    ).rows[0].result;
+    const dates = exported.map((r) => r.delivery.processing_date);
+    assert.deepEqual(dates, [...dates].sort().reverse());
+    await db.exec("set role authenticated");
+    await assert.rejects(
+      db.query("select list_shipping_work($1)", [staff]),
+      /permission denied/,
     );
   } finally {
     await db.close();

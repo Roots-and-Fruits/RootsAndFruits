@@ -21,6 +21,7 @@ for (const file of [
   "202610020002_payment_method.sql",
   "202610030001_order_notifications.sql",
   "202610030002_cancel_before_export.sql",
+  "202610050001_shipping_worklist.sql",
 ])
   await db.exec(
     await readFile(join(root, "supabase/migrations", file), "utf8"),
@@ -139,6 +140,69 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) raw += chunk;
     if (raw) body = JSON.parse(raw);
     // Local test fixtures only; this server never loads real Supabase settings.
+    if (url.pathname === "/__test/shipping-fixture" && req.method === "POST") {
+      // Isolated PGlite only. No production credentials are loaded by this server.
+      const count = body.count ?? 120;
+      if (!Number.isInteger(count) || count < 1 || count > 1100)
+        return send(res, {}, 400);
+      await db.exec(`delete from order_notifications; delete from export_members; delete from order_items;
+        delete from stock_movements where checkout_id is not null; delete from deliveries;
+        delete from checkouts; delete from export_batches;`);
+      const dates = (
+        await db.query(
+          "select (now() at time zone 'Asia/Seoul')::date::text as today",
+        )
+      ).rows[0];
+      const baseNumber = (
+        await db.query("select last_value from checkout_number_seq")
+      ).rows[0].last_value;
+      await db.query(
+        `
+        insert into checkouts(request_id,request_payload,category,sender,status)
+        select gen_random_uuid(),jsonb_build_object('fixture',n),'product',
+          '{"name":"발송 테스트","phone":"01012345678"}',
+          case when n=$1+1 then 'pending' when n=$1+2 then 'cancelled' else 'paid' end
+        from generate_series(1,$1+5) n`,
+        [count],
+      );
+      await db.query(
+        `
+        insert into deliveries(checkout_id,position,recipient,delivery_mode,requested_date,processing_date,discount_unit,status)
+        select id,1,jsonb_build_object('name','발송수령인'||(request_payload->>'fixture'),
+          'phone','01012345678','postalCode','00000','address','가상 주소','addressDetail','테스트'),
+          'scheduled',$2::date+5,
+          $2::date + case when (request_payload->>'fixture')::int=$1+4 then 3
+            when (request_payload->>'fixture')::int=$1+5 then 1
+            else case (request_payload->>'fixture')::int%4 when 0 then -2 when 1 then 0 when 2 then 1 else 3 end end,
+          0,case when (request_payload->>'fixture')::int=$1+3 then 'shipped' else 'waiting' end
+        from checkouts`,
+        [count, dates.today],
+      );
+      await db.exec(`insert into deliveries(checkout_id,position,recipient,delivery_mode,requested_date,processing_date,discount_unit,status)
+        select id,2,'{"name":"발송된 다른 배송지","phone":"01012345678","postalCode":"00000","address":"가상 주소","addressDetail":""}',
+          'regular','2026-01-02','2026-01-01',0,'shipped' from checkouts where request_payload->>'fixture'='1';
+        insert into order_items(delivery_id,product_id,label,weight_grams,unit_price,quantity,bundle_eligible,inventory_deducted)
+        select id,'10000000-0000-4000-8000-000000000002','가상 상품',3000,10000,1,false,false from deliveries;`);
+      const ids = (
+        await db.query(
+          `select d.id from deliveries d join checkouts c on c.id=d.checkout_id
+        where (c.request_payload->>'fixture')::int in ($1+4,$1+5)`,
+          [count],
+        )
+      ).rows.map((r) => r.id);
+      const batch = randomUUID();
+      await db.query(
+        "select commit_export($1,$2,'테스트_출력.xlsx','dGVzdA==',$3)",
+        [batch, ids, staff],
+      );
+      return send(res, {
+        today: dates.today,
+        baseNumber,
+        batch,
+        ...(await db.query("select list_shipping_work($1) as result", [staff]))
+          .rows[0].result,
+      });
+    }
     if (url.pathname === "/__test/auth-session")
       return send(
         res,
@@ -204,6 +268,7 @@ const server = createServer(async (req, res) => {
       const allowed = [
         "staff_email",
         "list_checkouts",
+        "list_shipping_work",
         "save_product",
         "reorder_products",
         "save_settings",
@@ -263,7 +328,7 @@ const server = createServer(async (req, res) => {
     else if (table === "export_batches")
       data = (
         await db.query(
-          `select to_jsonb(b)||jsonb_build_object('export_members',coalesce((select jsonb_agg(jsonb_build_object('delivery_id',m.delivery_id,'deliveries',jsonb_build_object('recipient',d.recipient,'status',d.status,'checkouts',jsonb_build_object('order_number',c.order_number)))) from export_members m join deliveries d on d.id=m.delivery_id join checkouts c on c.id=d.checkout_id where m.batch_id=b.id),'[]')) as row from export_batches b order by created_at desc`,
+          `select to_jsonb(b)||jsonb_build_object('export_members',coalesce((select jsonb_agg(jsonb_build_object('delivery_id',m.delivery_id,'deliveries',jsonb_build_object('recipient',d.recipient,'status',d.status,'processing_date',d.processing_date,'checkouts',jsonb_build_object('order_number',c.order_number)))) from export_members m join deliveries d on d.id=m.delivery_id join checkouts c on c.id=d.checkout_id where m.batch_id=b.id),'[]')) as row from export_batches b order by created_at desc`,
         )
       ).rows.map((r) => r.row);
     else

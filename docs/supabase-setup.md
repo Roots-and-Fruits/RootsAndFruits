@@ -12,6 +12,7 @@
    - `supabase/migrations/202610020002_payment_method.sql`
    - `supabase/migrations/202610030001_order_notifications.sql`
    - `supabase/migrations/202610030002_cancel_before_export.sql`
+   - `supabase/migrations/202610050001_shipping_worklist.sql`
 3. 프로젝트 URL과 API Keys의 Publishable key·Secret key를 `.env.local`에 추가합니다. 기존 미리보기 설정은 덮어쓰지 않습니다.
 
    ```dotenv
@@ -100,3 +101,19 @@ select exists (
 - 취소와 출력 확정이 같은 주문을 먼저 잠그도록 두 DB 함수를 함께 교체합니다. 먼저 확정된 작업에 따라 뒤의 취소 또는 출력이 거절됩니다. 출력 파일을 만드는 도중 취소됐으면 해당 출력 묶음은 저장되지 않습니다.
 - 기존 주문·상품·재고·주문번호 시퀀스를 초기화하거나 과거 주문을 취소하는 SQL이 아닙니다. 결제 방식의 상태 제약과 처리 함수만 갱신합니다.
 - 적용 후 미결제/결제 완료 주문의 출력 전 취소, 재시도 시 재고 중복 반환 방지, 두 배송지 중 한 곳만 출력해도 취소 차단, 취소 건의 출력/발송 차단을 확인합니다. 문자 기능은 기존처럼 취소된 주문의 대기 알림을 전송 대상에서 제외하며 취소 안내 문자를 새로 발송하지 않습니다.
+
+
+## 발송관리 작업 목록 업데이트
+
+앞선 SQL을 적용한 기존 DB에서는 [202610050001_shipping_worklist.sql](../supabase/migrations/202610050001_shipping_worklist.sql) **전체를 SQL Editor에서 실행**한 뒤 발송관리 화면을 새로고침합니다. 이 파일만 추가로 적용하면 되며 이전 마이그레이션이나 주문 초기화 SQL은 다시 실행하지 않습니다.
+
+- 결제 완료·미발송 작업을 모두 조회하는 관리자 전용 함수를 추가하고, 새 엑셀의 행 정렬을 출발 날짜 내림차순으로 맞춥니다.
+- 테이블 구조·기존 주문·상품·금액·출발 날짜·주문번호는 변경하지 않습니다. 저장된 기존 엑셀 파일도 유지합니다.
+- SQL 미적용 상태에서는 새 발송관리 화면에 DB 업데이트 안내가 표시됩니다. 원격 SQL은 사용자가 직접 실행합니다.
+- 전체 적용 확인용 조회(데이터 변경 없음):
+
+```sql
+select to_regprocedure('public.list_shipping_work(uuid)') as shipping_work_function;
+```
+
+`list_shipping_work(uuid)`가 표시되면 조회 함수가 존재합니다. 실제 동작은 관리자 로그인 후 발송관리에서 확인합니다.

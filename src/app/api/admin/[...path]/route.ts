@@ -1,4 +1,4 @@
-import { dateInSeoul } from "@/features/orders/calculations";
+import { addDays, dateInSeoul } from "@/features/orders/calculations";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -23,7 +23,7 @@ import {
   type Checkout,
   type Shipment,
 } from "@/features/admin/schema";
-import { shippingWorkbook } from "@/features/admin/excel";
+import { shippingFilename, shippingWorkbook } from "@/features/admin/excel";
 import {
   scheduleNotifications,
   processNotifications,
@@ -114,6 +114,23 @@ async function readAdmin(
       checkDb(b.error);
       return Response.json({ ...a.data, ...b.data });
     }
+    if (path[0] === "shipping") {
+      const { data, error } = await timing.measure("db_shipping", () =>
+        db.rpc("list_shipping_work", { p_actor: staffUser.id }),
+      );
+      if (error && ["PGRST202", "42883"].includes(error.code))
+        throw new HttpError(
+          "발송관리 DB 업데이트가 필요합니다. 배송 목록 SQL 적용 후 새로고침해주세요.",
+          503,
+        );
+      checkDb(error);
+      return Response.json(
+        { ...data, serverTime: new Date().toISOString() },
+        {
+          headers: { "Cache-Control": "private, no-store" },
+        },
+      );
+    }
     if (path[0] === "orders") {
       const filters: Record<string, string> = {};
       for (const name of [
@@ -188,7 +205,7 @@ async function readAdmin(
         db
           .from("export_batches")
           .select(
-            "id,filename,created_at,created_by,export_members(delivery_id,deliveries(recipient,status,checkouts(order_number)))",
+            "id,filename,created_at,created_by,export_members(delivery_id,deliveries(recipient,status,processing_date,checkouts(order_number)))",
             { count: "exact" },
           )
           .order("created_at", { ascending: false })
@@ -375,8 +392,24 @@ export async function POST(request: Request, context: Context) {
         rows.some((r) => r.delivery.status !== "waiting")
       )
         throw new HttpError("출력 대상 상태를 다시 확인해주세요.");
+      const confirmedFutureIds = z
+        .array(uuid)
+        .max(1000)
+        .default([])
+        .parse(body.confirmedFutureIds);
+      const tomorrow = addDays(dateInSeoul(), 1);
+      if (
+        rows.some(
+          (r) =>
+            r.delivery.processing_date > tomorrow &&
+            !confirmedFutureIds.includes(r.delivery.id),
+        )
+      )
+        throw new HttpError(
+          "내일 이후 출발 예정인 배송지가 포함되어 있습니다. 목록에서 개별 선택하여 조기 출력을 확인해주세요.",
+        );
       const file = await shippingWorkbook(rows, settings.data);
-      const filename = `택배송장_${dateInSeoul()}_${batchId.slice(0, 8)}.xlsx`;
+      const filename = shippingFilename();
       result = await db.rpc("commit_export", {
         p_id: batchId,
         p_ids: ids,

@@ -1,10 +1,25 @@
 import ExcelJS from "exceljs";
+import { dateInSeoul } from "@/features/orders/calculations";
 import {
   savedItemLabel,
   type Checkout,
   type Settings,
   type Shipment,
 } from "./schema";
+
+export function shippingFilename(now = new Date()): string {
+  const time = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Seoul",
+    hourCycle: "h23",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+    .format(now)
+    .replaceAll(":", "");
+  return `택배송장_${dateInSeoul(now).replaceAll("-", "")}_${time}.xlsx`;
+}
+
 export const shippingHeaders = [
   "주문번호",
   "보내는사람(지정)",

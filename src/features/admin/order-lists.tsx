@@ -210,9 +210,13 @@ export function ShippingList({
   selected,
   onSelect,
   onOpen,
+  disabled = false,
+  today,
 }: {
   rows: { checkout: Checkout; delivery: Shipment }[];
   selected: string[];
+  disabled?: boolean;
+  today: string;
   onSelect: (id: string, checked: boolean) => void;
   onOpen: (order: Checkout) => void;
 }) {
@@ -239,7 +243,9 @@ export function ShippingList({
             <label className="flex min-h-11 items-center gap-3 font-semibold lg:min-h-9">
               <Checkbox
                 checked={selected.includes(d.id)}
-                disabled={c.status !== "paid" || d.status === "shipped"}
+                disabled={
+                  disabled || c.status !== "paid" || d.status === "shipped"
+                }
                 onCheckedChange={(checked) => onSelect(d.id, checked === true)}
               />
               <span>
@@ -261,7 +267,12 @@ export function ShippingList({
             </div>
             <p className="tabular-nums">
               <span className="mr-2 text-muted-foreground lg:hidden">출발</span>
-              {d.processing_date}
+              <time dateTime={d.processing_date}>{d.processing_date}</time>
+              {d.processing_date < today && (
+                <span className="mt-1 block text-xs font-semibold text-amber-800">
+                  출발 예정일 경과
+                </span>
+              )}
             </p>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <PaymentStatus status={c.status} method={c.payment_method} />
@@ -272,6 +283,7 @@ export function ShippingList({
             <AdminButton
               variant="outline"
               className="justify-self-start lg:justify-self-end"
+              disabled={disabled}
               onClick={() => onOpen(c)}
             >
               상세

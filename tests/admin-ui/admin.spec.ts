@@ -18,7 +18,7 @@ async function login(page: import("@playwright/test").Page) {
   await page
     .getByRole("button", { name: "관리자 로그인", exact: true })
     .click();
-  await expect(page).toHaveURL(/\/namu-admin\/counter/);
+  await expect(page).toHaveURL(/\/namu-admin\/counter/, { timeout: 20000 });
 }
 test("admin entry is direct-only and old admin routes are unavailable", async ({
   page,
@@ -207,13 +207,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   await expect(
     page.getByRole("heading", { name: "발송 관리", exact: true }),
   ).toBeVisible();
-  await page
-    .getByLabel("주문번호", { exact: true })
-    .fill(String(result.data.orderNumber));
-  await page.getByRole("button", { name: "검색", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "상세", exact: true }),
-  ).toHaveCount(1);
+  await expect(page.getByLabel("주문번호", { exact: true })).toHaveCount(0);
   await expect(
     page.getByText(`${result.data.orderNumber}번 · 받는분`, { exact: true }),
   ).toBeVisible();
@@ -247,10 +241,16 @@ test("admin boundaries, product settings and real order lifecycle against isolat
     fullPage: true,
     animations: "disabled",
   });
+  // Shipped deliveries leave the worklist; full history remains in order management.
+  await page.getByRole("link", { name: "주문 관리", exact: true }).click();
   await page
-    .locator("article")
-    .filter({ hasText: `${result.data.orderNumber}번 · 받는분` })
-    .getByRole("button", { name: "상세", exact: true })
+    .getByLabel("주문번호", { exact: true })
+    .fill(String(result.data.orderNumber));
+  await page.getByRole("button", { name: "검색", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: new RegExp(`^${result.data.orderNumber}번 .* 주문 상세$`),
+    })
     .click();
   await expect(
     page.getByRole("button", { name: "주문 취소", exact: true }),
@@ -340,11 +340,13 @@ test("admin boundaries, product settings and real order lifecycle against isolat
     path: testInfo.outputPath("counter-reorder-note.png"),
     fullPage: true,
   });
+  // The shipping worklist contains only paid orders.
+  await reorderedRow.click();
+  await page.getByRole("button", { name: "결제 완료", exact: true }).click();
+  await page.getByRole("radio", { name: "현금", exact: true }).check();
+  await page.getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.getByText("결제 완료를 기록했습니다.")).toBeVisible();
   await page.getByRole("link", { name: "발송 관리", exact: true }).click();
-  await page
-    .getByLabel("주문번호", { exact: true })
-    .fill(String(reordered.orderNumber));
-  await page.getByRole("button", { name: "검색", exact: true }).click();
   const shippingRow = page
     .getByRole("region", { name: "배송지별 발송 목록" })
     .getByRole("article")

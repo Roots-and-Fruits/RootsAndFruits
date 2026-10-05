@@ -159,6 +159,7 @@ export type ExportBatch = {
     deliveries?: {
       recipient: { name: string };
       status: Shipment["status"];
+      processing_date: string;
       checkouts: { order_number: number };
     };
   }[];

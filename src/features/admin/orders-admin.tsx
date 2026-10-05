@@ -1,10 +1,9 @@
 "use client";
 import { adminProductLabel } from "./schema";
-import { createRequestId } from "@/lib/request-id";
 import { useEffect, useState } from "react";
 import { AdminButton as Button } from "./admin-button";
 import { AdminInput as Input, AdminSelect } from "./admin-fields";
-import { CheckoutList, ShippingList } from "./order-lists";
+import { CheckoutList } from "./order-lists";
 import {
   Dialog,
   DialogContent,
@@ -13,13 +12,9 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { adminRequest } from "./client";
-import {
-  stateLabel,
-  type Checkout,
-  type AdminProduct,
-  type ExportBatch,
-} from "./schema";
-import { ConfirmAction } from "./confirm-action";
+import { stateLabel, type Checkout, type AdminProduct } from "./schema";
+import { ShippingWorkspace } from "./shipping-workspace";
+import { shippingRows } from "./shipping-work";
 import { OrderDetail } from "./order-detail";
 import { ReorderEditor } from "./reorder-editor";
 import { markAdminReady } from "./timing-client";
@@ -36,20 +31,18 @@ export function OrdersAdmin({ section }: { section: string }) {
     [products, setProducts] = useState<AdminProduct[] | null>(null),
     [catalogError, setCatalogError] = useState(""),
     [catalogRevision, setCatalogRevision] = useState(0),
-    [batches, setBatches] = useState<ExportBatch[]>([]),
-    [batchCount, setBatchCount] = useState(0),
-    [batchPage, setBatchPage] = useState(0),
+    [serverTime, setServerTime] = useState(""),
     [page, setPage] = useState(0),
     [filters, setFilters] = useState<Record<string, string>>({}),
     [applied, setApplied] = useState<Record<string, string>>({}),
     [revision, setRevision] = useState(0),
-    [selected, setSelected] = useState<string[]>([]),
     [detail, setDetail] = useState<Checkout | null>(null),
     [reorder, setReorder] = useState<Checkout | null>(null),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [loadFailed, setLoadFailed] = useState(false);
   useEffect(() => {
     if (!loading && !error) markAdminReady(section, "orders_committed");
   }, [loading, error, section]);
@@ -57,13 +50,22 @@ export function OrdersAdmin({ section }: { section: string }) {
     let live = true;
     const controller = new AbortController();
     const query = new URLSearchParams({ ...applied, page: String(page) });
-    adminRequest<{ orders: Checkout[]; count: number }>(
-      `orders?${query}`,
+    adminRequest<{ orders: Checkout[]; count: number; serverTime?: string }>(
+      section === "shipping" ? "shipping" : `orders?${query}`,
       undefined,
       controller.signal,
     )
       .then((data) => {
         if (live) {
+          if (
+            section === "shipping" &&
+            shippingRows(data.orders).length !== data.count
+          )
+            throw new Error(
+              "발송 목록을 모두 불러오지 못했습니다. 새로고침해주세요.",
+            );
+          setServerTime(data.serverTime ?? "");
+          setLoadFailed(false);
           setOrders(data.orders);
           setCount(data.count);
           setLoading(false);
@@ -72,6 +74,7 @@ export function OrdersAdmin({ section }: { section: string }) {
       .catch((e) => {
         if (live) {
           setError(e.message);
+          setLoadFailed(true);
           setLoading(false);
         }
       });
@@ -79,10 +82,10 @@ export function OrdersAdmin({ section }: { section: string }) {
       live = false;
       controller.abort();
     };
-  }, [page, applied, revision]);
+  }, [section, page, applied, revision]);
   useEffect(() => {
     // The counter displays order snapshots; only filter menus need the catalog.
-    if (section === "counter") return;
+    if (section !== "orders") return;
     let live = true;
     const controller = new AbortController();
     adminRequest<AdminProduct[]>("products", undefined, controller.signal)
@@ -98,28 +101,10 @@ export function OrdersAdmin({ section }: { section: string }) {
       controller.abort();
     };
   }, [section, catalogRevision]);
-  useEffect(() => {
-    if (section !== "shipping") return;
-    let live = true;
-    adminRequest<{ batches: ExportBatch[]; count: number }>(
-      `exports?page=${batchPage}`,
-    )
-      .then((data) => {
-        if (live) {
-          setBatches(data.batches);
-          setBatchCount(data.count);
-        }
-      })
-      .catch((e) => live && setError(e.message));
-    return () => {
-      live = false;
-    };
-  }, [section, revision, batchPage]);
   const reload = () => {
     setError("");
     setLoading(true);
     setRevision((v) => v + 1);
-    setSelected([]);
     setDetail(null);
     setCatalogRevision((v) => v + 1);
   };
@@ -139,38 +124,6 @@ export function OrdersAdmin({ section }: { section: string }) {
       setBusy(false);
     }
   }
-  async function exportSelected() {
-    setBusy(true);
-    setError("");
-    try {
-      const key = "roots-and-fruits:export-request";
-      let requestId = createRequestId();
-      const previous = sessionStorage.getItem(key);
-      if (previous) {
-        const old = JSON.parse(previous);
-        if (JSON.stringify([...selected].sort()) === JSON.stringify(old.ids))
-          requestId = old.requestId;
-      }
-      sessionStorage.setItem(
-        key,
-        JSON.stringify({ requestId, ids: [...selected].sort() }),
-      );
-      const result = await adminRequest<{ id: string }>("exports", {
-        ids: selected,
-        requestId,
-      });
-      sessionStorage.removeItem(key);
-      Object.assign(document.createElement("a"), {
-        href: `/api/admin/exports/${result.id}`,
-      }).click();
-      setNotice("엑셀을 생성했습니다. 출력 이력에서 다시 받을 수 있습니다.");
-      reload();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
   if (reorder)
     return (
       <ReorderEditor
@@ -185,19 +138,6 @@ export function OrdersAdmin({ section }: { section: string }) {
         }}
       />
     );
-  const rows = (loading ? [] : orders).flatMap((c) =>
-    c.deliveries
-      .filter(
-        (d) =>
-          (!applied.recipient ||
-            d.recipient.name.includes(applied.recipient)) &&
-          (!applied.processing || d.processing_date === applied.processing) &&
-          (!applied.shipping || d.status === applied.shipping) &&
-          (!applied.product ||
-            d.order_items.some((i) => i.product_id === applied.product)),
-      )
-      .map((d) => ({ checkout: c, delivery: d })),
-  );
   return (
     <div className="space-y-6 lg:space-y-5">
       {error && (
@@ -213,20 +153,22 @@ export function OrdersAdmin({ section }: { section: string }) {
           {notice}
         </p>
       )}
-      <form
-        className={`grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-2 lg:gap-x-5 lg:gap-y-3 ${section === "counter" ? "lg:grid-cols-[16rem_auto]" : "lg:grid-cols-4"}`}
-        onSubmit={(e) => {
-          e.preventDefault();
-          setError("");
-          setPage(0);
-          setApplied({ ...filters });
-          setSelected([]);
-          setLoading(true);
-          setRevision((v) => v + 1);
-        }}
-      >
-        {(section === "counter" ? filterLabels.slice(0, 1) : filterLabels).map(
-          ([key, label]) => (
+      {section !== "shipping" && (
+        <form
+          className={`grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-2 lg:gap-x-5 lg:gap-y-3 ${section === "counter" ? "lg:grid-cols-[16rem_auto]" : "lg:grid-cols-4"}`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError("");
+            setPage(0);
+            setApplied({ ...filters });
+            setLoading(true);
+            setRevision((v) => v + 1);
+          }}
+        >
+          {(section === "counter"
+            ? filterLabels.slice(0, 1)
+            : filterLabels
+          ).map(([key, label]) => (
             <label
               key={key}
               className="flex min-w-0 flex-col gap-2 text-sm lg:gap-1.5"
@@ -240,275 +182,153 @@ export function OrdersAdmin({ section }: { section: string }) {
                 }
               />
             </label>
-          ),
-        )}
-        {section !== "counter" && (
-          <>
-            <label className="flex min-w-0 flex-col gap-2 text-sm lg:gap-1.5">
-              결제 상태
-              <AdminSelect
-                value={filters.status || ""}
-                onChange={(e) =>
-                  setFilters({ ...filters, status: e.target.value })
-                }
-              >
-                <option value="">전체</option>
-                {(["pending", "paid", "cancelled"] as const).map((s) => (
-                  <option key={s} value={s}>
-                    {stateLabel[s]}
+          ))}
+          {section !== "counter" && (
+            <>
+              <label className="flex min-w-0 flex-col gap-2 text-sm lg:gap-1.5">
+                결제 상태
+                <AdminSelect
+                  value={filters.status || ""}
+                  onChange={(e) =>
+                    setFilters({ ...filters, status: e.target.value })
+                  }
+                >
+                  <option value="">전체</option>
+                  {(["pending", "paid", "cancelled"] as const).map((s) => (
+                    <option key={s} value={s}>
+                      {stateLabel[s]}
+                    </option>
+                  ))}
+                </AdminSelect>
+              </label>
+              <label className="flex min-w-0 flex-col gap-2 text-sm lg:gap-1.5">
+                발송 상태
+                <AdminSelect
+                  value={filters.shipping || ""}
+                  onChange={(e) =>
+                    setFilters({ ...filters, shipping: e.target.value })
+                  }
+                >
+                  <option value="">전체</option>
+                  {(["waiting", "exported", "shipped"] as const).map((s) => (
+                    <option key={s} value={s}>
+                      {stateLabel[s]}
+                    </option>
+                  ))}
+                </AdminSelect>
+              </label>
+              <label className="flex min-w-0 flex-col gap-2 text-sm lg:gap-1.5">
+                상품
+                <AdminSelect
+                  value={filters.product || ""}
+                  disabled={products === null}
+                  onChange={(e) =>
+                    setFilters({ ...filters, product: e.target.value })
+                  }
+                >
+                  <option value="">
+                    {products === null
+                      ? catalogError
+                        ? "상품 목록 조회 실패"
+                        : "상품 목록 불러오는 중…"
+                      : "전체"}
                   </option>
-                ))}
-              </AdminSelect>
-            </label>
-            <label className="flex min-w-0 flex-col gap-2 text-sm lg:gap-1.5">
-              발송 상태
-              <AdminSelect
-                value={filters.shipping || ""}
-                onChange={(e) =>
-                  setFilters({ ...filters, shipping: e.target.value })
-                }
-              >
-                <option value="">전체</option>
-                {(["waiting", "exported", "shipped"] as const).map((s) => (
-                  <option key={s} value={s}>
-                    {stateLabel[s]}
-                  </option>
-                ))}
-              </AdminSelect>
-            </label>
-            <label className="flex min-w-0 flex-col gap-2 text-sm lg:gap-1.5">
-              상품
-              <AdminSelect
-                value={filters.product || ""}
-                disabled={products === null}
-                onChange={(e) =>
-                  setFilters({ ...filters, product: e.target.value })
-                }
-              >
-                <option value="">
-                  {products === null
-                    ? catalogError
-                      ? "상품 목록 조회 실패"
-                      : "상품 목록 불러오는 중…"
-                    : "전체"}
-                </option>
-                {(products ?? []).map((p) => (
-                  <option key={p.id} value={p.id!}>
-                    {adminProductLabel(p)}
-                  </option>
-                ))}
-              </AdminSelect>
+                  {(products ?? []).map((p) => (
+                    <option key={p.id} value={p.id!}>
+                      {adminProductLabel(p)}
+                    </option>
+                  ))}
+                </AdminSelect>
+                {catalogError && (
+                  <span role="alert" className="text-xs text-destructive">
+                    상품 검색 목록: {catalogError}
+                  </span>
+                )}
+              </label>
               {catalogError && (
-                <span role="alert" className="text-xs text-destructive">
-                  상품 검색 목록: {catalogError}
-                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCatalogRevision((v) => v + 1)}
+                >
+                  상품 목록 다시 불러오기
+                </Button>
               )}
-            </label>
-            {catalogError && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCatalogRevision((v) => v + 1)}
-              >
-                상품 목록 다시 불러오기
-              </Button>
-            )}
-          </>
-        )}
-        <div
-          className={`flex flex-wrap items-end gap-2 ${section === "counter" ? "" : "sm:col-span-2 lg:col-span-4 lg:justify-end lg:border-t lg:pt-3"}`}
-        >
-          <Button>검색</Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setFilters({});
-              setApplied({});
-              setPage(0);
-              setSelected([]);
-            }}
+            </>
+          )}
+          <div
+            className={`flex flex-wrap items-end gap-2 ${section === "counter" ? "" : "sm:col-span-2 lg:col-span-4 lg:justify-end lg:border-t lg:pt-3"}`}
           >
-            초기화
-          </Button>
-          <Button type="button" variant="ghost" onClick={reload}>
-            새로고침
-          </Button>
-        </div>
-      </form>
-      <p className="text-xs text-muted-foreground">
-        최신 접수순 · 주문번호 내림차순
-        {section === "shipping" ? " · 배송지별 표시" : ""}
-      </p>
+            <Button>검색</Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setFilters({});
+                setApplied({});
+                setPage(0);
+              }}
+            >
+              초기화
+            </Button>
+            <Button type="button" variant="ghost" onClick={reload}>
+              새로고침
+            </Button>
+          </div>
+        </form>
+      )}
+      {section !== "shipping" && (
+        <p className="text-xs text-muted-foreground">
+          최신 접수순 · 주문번호 내림차순
+        </p>
+      )}
       {loading && <p role="status">주문을 불러오는 중…</p>}
       {section === "shipping" ? (
+        <ShippingWorkspace
+          key={revision}
+          rows={loading || loadFailed ? [] : shippingRows(orders)}
+          serverTime={serverTime}
+          loading={loading}
+          failed={loadFailed}
+          busy={busy}
+          onOpen={setDetail}
+          onReload={reload}
+          onExported={() => {
+            setNotice(
+              "엑셀을 생성했습니다. 출력 이력에서 다시 받을 수 있습니다.",
+            );
+            reload();
+          }}
+          onShip={(ids) => act("ship", { ids }, "발송 완료 처리했습니다.")}
+        />
+      ) : (
         <>
-          <p className="text-sm text-muted-foreground">
-            결제 완료 주문만 출력할 수 있어요. 선택은 현재 목록에서 처리합니다.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={() =>
-                setSelected(
-                  rows
-                    .filter(
-                      (r) =>
-                        r.checkout.status === "paid" &&
-                        r.delivery.status === "waiting",
-                    )
-                    .map((r) => r.delivery.id),
-                )
-              }
-            >
-              출력 대기 전체 선택
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() =>
-                setSelected(
-                  rows
-                    .filter(
-                      (r) =>
-                        r.checkout.status === "paid" &&
-                        r.delivery.status === "exported",
-                    )
-                    .map((r) => r.delivery.id),
-                )
-              }
-            >
-              발송 대기 전체 선택
-            </Button>
-            <Button variant="ghost" onClick={() => setSelected([])}>
-              선택 해제
-            </Button>
-            <Button
-              disabled={loading || busy || selected.length === 0}
-              onClick={exportSelected}
-            >
-              선택 엑셀 출력
-            </Button>
-            <ConfirmAction
-              label="선택 발송 완료"
-              description="선택한 배송주문을 실제 발송했는지 확인해주세요. 엑셀 출력된 주문만 처리됩니다."
-              disabled={loading || busy || selected.length === 0}
-              onConfirm={() =>
-                act("ship", { ids: selected }, "발송 완료 처리했습니다.")
-              }
-            />
-          </div>
-          <ShippingList
-            rows={rows}
-            selected={selected}
-            onSelect={(id, checked) =>
-              setSelected((old) =>
-                checked ? [...old, id] : old.filter((value) => value !== id),
-              )
-            }
+          <CheckoutList
+            orders={loading ? [] : orders}
+            counter={section === "counter"}
             onOpen={setDetail}
           />
-        </>
-      ) : (
-        <CheckoutList
-          orders={loading ? [] : orders}
-          counter={section === "counter"}
-          onOpen={setDetail}
-        />
-      )}
-      {!loading && !orders.length && <p>검색 결과가 없습니다.</p>}
-      <div className="flex items-center gap-4">
-        <Button
-          variant="outline"
-          disabled={page === 0}
-          onClick={() => {
-            setPage(page - 1);
-            setSelected([]);
-          }}
-        >
-          이전
-        </Button>
-        <span>
-          {page + 1} / {Math.max(1, Math.ceil(count / 30))} · 주문 {count}건
-        </span>
-        <Button
-          variant="outline"
-          disabled={(page + 1) * 30 >= count}
-          onClick={() => {
-            setPage(page + 1);
-            setSelected([]);
-          }}
-        >
-          다음
-        </Button>
-      </div>
-      {section === "shipping" && (
-        <section className="space-y-4 border-t pt-8">
-          <h2 className="text-xl font-semibold">엑셀 출력 이력</h2>
-          {batches.map((b) => (
-            <article
-              key={b.id}
-              className="flex flex-col items-start gap-4 rounded-xl border bg-card p-4 sm:flex-row sm:items-center"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="break-all">{b.filename}</p>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(b.created_at).toLocaleString("ko-KR", {
-                    timeZone: "Asia/Seoul",
-                  })}{" "}
-                  · {b.export_members.length}건 · {b.created_by}
-                </p>
-                <details className="mt-2 text-sm">
-                  <summary>포함 주문 확인</summary>
-                  <ul>
-                    {b.export_members.map((m) => (
-                      <li key={m.delivery_id}>
-                        {m.deliveries?.checkouts.order_number}번 ·{" "}
-                        {m.deliveries?.recipient.name} ·{" "}
-                        {m.deliveries
-                          ? stateLabel[m.deliveries.status]
-                          : m.delivery_id}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              </div>
-              <a
-                className="text-primary underline"
-                href={`/api/admin/exports/${b.id}`}
-              >
-                재다운로드
-              </a>
-              <ConfirmAction
-                label="묶음 발송 완료"
-                description="이 출력 묶음의 모든 배송주문을 발송 완료 처리합니다. 이미 완료된 건은 중복 처리하지 않습니다."
-                disabled={busy}
-                onConfirm={() =>
-                  act(
-                    "ship",
-                    { ids: b.export_members.map((m) => m.delivery_id) },
-                    "묶음 발송 완료 처리했습니다.",
-                  )
-                }
-              />
-            </article>
-          ))}
-          <div className="flex gap-3">
+          {!loading && !orders.length && <p>검색 결과가 없습니다.</p>}
+          <div className="flex items-center gap-4">
             <Button
               variant="outline"
-              disabled={!batchPage}
-              onClick={() => setBatchPage(batchPage - 1)}
+              disabled={page === 0}
+              onClick={() => setPage(page - 1)}
             >
-              이전 출력 이력
+              이전
             </Button>
+            <span>
+              {page + 1} / {Math.max(1, Math.ceil(count / 30))} · 주문 {count}건
+            </span>
             <Button
               variant="outline"
-              disabled={(batchPage + 1) * 30 >= batchCount}
-              onClick={() => setBatchPage(batchPage + 1)}
+              disabled={(page + 1) * 30 >= count}
+              onClick={() => setPage(page + 1)}
             >
-              다음 출력 이력
+              다음
             </Button>
           </div>
-        </section>
+        </>
       )}
       <Dialog open={!!detail} onOpenChange={(open) => !open && setDetail(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">

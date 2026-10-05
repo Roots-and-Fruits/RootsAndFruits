@@ -156,17 +156,13 @@ test("paid order cancellation preserves payment history and safely retries a los
   ).toHaveCount(0);
   await expect(detail).toContainText("발송 제외");
   await page.goto("/namu-admin/shipping");
-  await page.getByLabel("주문번호", { exact: true }).fill(String(number));
-  await page.getByRole("button", { name: "검색", exact: true }).click();
-  const rows = page
-    .getByRole("region", { name: "배송지별 발송 목록" })
-    .getByRole("article");
-  await expect(rows).toHaveCount(2);
-  for (const row of await rows.all()) {
-    await expect(row).toContainText("취소 · 카드");
-    await expect(row).toContainText("발송 제외");
-    await expect(row.getByRole("checkbox")).toBeDisabled();
-  }
+  await expect(page.getByText("출발 예정일 내림차순 · 전체 배송지 표시")).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "배송지별 발송 목록" })
+      .getByRole("article")
+      .filter({ hasText: new RegExp(`^${number}번 ·`) }),
+  ).toHaveCount(0);
 });
 
 test("exporting one shipment blocks whole-order cancellation even from an already-open dialog", async ({
