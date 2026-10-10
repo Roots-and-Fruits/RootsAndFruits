@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { dateInSeoul } from "@/features/orders/calculations";
+import { compareShippingRows } from "./shipping-work";
 import {
   savedItemLabel,
   type Checkout,
@@ -47,7 +48,7 @@ export async function shippingWorkbook(
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Sheet1");
   sheet.addRow(shippingHeaders);
-  for (const { checkout: c, delivery: d } of rows) {
+  for (const { checkout: c, delivery: d } of [...rows].sort(compareShippingRows)) {
     // Plain string values stay text, including values starting with '='. Never create formula cells.
     sheet.addRow([
       "",
@@ -66,7 +67,7 @@ export async function shippingWorkbook(
         .join(", "),
       "",
       d.order_items.reduce((s, i) => s + i.quantity, 0),
-      `${c.order_number}-${d.position}`,
+      `주문번호:${c.order_number}-${d.position}`,
       "",
       "",
       "",

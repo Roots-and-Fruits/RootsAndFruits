@@ -2,6 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
+import {
+  aligoVariables,
+  type NotificationJob,
+} from "../../src/features/notifications/messages";
 const staff = "00000000-0000-4000-8000-000000000001";
 const p1 = "10000000-0000-4000-8000-000000000001",
   p2 = "10000000-0000-4000-8000-000000000002",
@@ -34,6 +38,7 @@ async function setup(
   includeExperienceMigration = true,
   includePaymentMigration = true,
   includeCancellationMigration = includePaymentMigration,
+  includeAligoOnlyMigration = true,
 ) {
   const db = new PGlite();
   await db.exec(
@@ -50,13 +55,19 @@ async function setup(
     "202610030002_cancel_before_export.sql",
     "202610050001_shipping_worklist.sql",
     "202610050002_delivery_tracking.sql",
+    "202610060001_aligo_notifications.sql",
+    "202610070001_sender_only_notifications.sql",
+    "202610100001_aligo_only_notifications.sql",
+    "202610110001_reorder_kind.sql",
   ])
     if (
       (includeExperienceMigration ||
         f !== "202610020001_experience_products.sql") &&
       (includePaymentMigration || f !== "202610020002_payment_method.sql") &&
       (includeCancellationMigration ||
-        f !== "202610030002_cancel_before_export.sql")
+        f !== "202610030002_cancel_before_export.sql") &&
+      (includeAligoOnlyMigration ||
+        f !== "202610100001_aligo_only_notifications.sql")
     )
       await db.exec(await readFile(`supabase/migrations/${f}`, "utf8"));
   await db.query("select public.provision_staff(1::smallint,$1,$2,$3)", [
@@ -69,6 +80,806 @@ async function setup(
   );
   return db;
 }
+test("Postgres: reorder kinds preserve originals, requests, stock and notification uniqueness", async () => {
+  const db = await setup();
+  try {
+    await db.query(
+      "select configure_notification_delivery(true,'aligo',true,$1)",
+      [staff],
+    );
+    await db.exec(
+      "update products set stock_quantity=100 where inventory_enabled",
+    );
+    const order = payload([delivery([{ productId: p1, quantity: 2 }])]);
+    await db.query("select submit_checkout($1,$2::jsonb)", [
+      crypto.randomUUID(),
+      JSON.stringify(order),
+    ]);
+    const original = (
+      await db.query<{ id: string }>("select id from checkouts")
+    ).rows[0].id;
+    const before = (
+      await db.query("select to_jsonb(c) value from checkouts c where id=$1", [
+        original,
+      ])
+    ).rows;
+    const submit = (
+      request: string,
+      kind: string | null,
+      actor = staff,
+      source: string | null = original,
+      data = order,
+    ) =>
+      db.query<{ result: { orderNumber: number } }>(
+        "select submit_reorder_checkout($1,$2::jsonb,$3,$4,$5) as result",
+        [request, JSON.stringify(data), actor, source, kind],
+      );
+    for (const kind of ["correction", "repeat"]) {
+      const request = crypto.randomUUID();
+      const [first, retry] = await Promise.all([
+        submit(request, kind),
+        submit(request, kind),
+      ]);
+      assert.deepEqual(first.rows, retry.rows);
+      const created = (
+        await db.query<{
+          id: string;
+          reorder_kind: string;
+          status: string;
+          original_id: string;
+        }>(
+          "select id,reorder_kind,status,original_id from checkouts where request_id=$1",
+          [request],
+        )
+      ).rows[0];
+      assert.equal(created.reorder_kind, kind);
+      assert.equal(created.status, "pending");
+      assert.equal(created.original_id, original);
+      const events = (
+        await db.query<{ details: { kind: string; original_id: string } }>(
+          "select details from staff_events where target_id=$1 and action='reorder'",
+          [created.id],
+        )
+      ).rows;
+      assert.equal(events.length, 1);
+      assert.deepEqual(events[0].details, { kind, original_id: original });
+      await assert.rejects(
+        submit(request, kind === "repeat" ? "correction" : "repeat"),
+        /구분이 변경/,
+      );
+      await assert.rejects(
+        submit(request, kind, staff, created.id),
+        /내용이 변경/,
+      );
+      await assert.rejects(
+        submit(request, kind, staff, original, {
+          ...order,
+          sender: { ...sender, name: "다른 이름" },
+        }),
+        /내용이 변경/,
+      );
+      const listed = (
+        await db.query<{ result: { orders: { reorder_kind: string }[] } }>(
+          "select list_checkouts($1::jsonb,0,$2) result",
+          [JSON.stringify({ id: created.id }), staff],
+        )
+      ).rows[0].result;
+      assert.equal(listed.orders[0].reorder_kind, kind);
+      await db.query("select change_checkout($1,'pay',$2,'cash')", [
+        created.id,
+        staff,
+      ]);
+      const shipping = (
+        await db.query<{
+          result: { orders: { id: string; reorder_kind: string }[] };
+        }>("select list_shipping_work($1) result", [staff])
+      ).rows[0].result;
+      assert.equal(
+        shipping.orders.find((c) => c.id === created.id)?.reorder_kind,
+        kind,
+      );
+    }
+    assert.deepEqual(
+      (
+        await db.query(
+          "select to_jsonb(c) value from checkouts c where id=$1",
+          [original],
+        )
+      ).rows,
+      before,
+    );
+    assert.equal(
+      (
+        await db.query<{ stock_quantity: number }>(
+          "select stock_quantity from products where id=$1",
+          [p1],
+        )
+      ).rows[0].stock_quantity,
+      94,
+    );
+    assert.equal(
+      (
+        await db.query<{ n: number }>(
+          "select count(*)::int n from order_notifications where event='received'",
+        )
+      ).rows[0].n,
+      3,
+    );
+    for (const kind of [null, "other"])
+      await assert.rejects(submit(crypto.randomUUID(), kind), /재접수 구분/);
+    await assert.rejects(
+      submit(crypto.randomUUID(), "repeat", crypto.randomUUID()),
+      /관리자/,
+    );
+    await assert.rejects(
+      submit(crypto.randomUUID(), "repeat", staff, null),
+      /원본 주문/,
+    );
+    await assert.rejects(
+      submit(crypto.randomUUID(), "repeat", staff, crypto.randomUUID()),
+      /원본 주문/,
+    );
+    const legacyRequest = crypto.randomUUID();
+    const legacyArgs = [legacyRequest, JSON.stringify(order), staff, original];
+    const legacy = await db.query(
+      "select submit_checkout($1,$2::jsonb,$3,$4) result",
+      legacyArgs,
+    );
+    await assert.rejects(submit(legacyRequest, "repeat"), /구분이 변경/);
+    assert.deepEqual(
+      (
+        await db.query(
+          "select submit_checkout($1,$2::jsonb,$3,$4) result",
+          legacyArgs,
+        )
+      ).rows,
+      legacy.rows,
+    );
+    assert.equal(
+      (
+        await db.query<{ reorder_kind: string | null }>(
+          "select reorder_kind from checkouts where request_id=$1",
+          [legacyRequest],
+        )
+      ).rows[0].reorder_kind,
+      null,
+    );
+    await db.exec(
+      await readFile(
+        "supabase/migrations/202610110001_reorder_kind.sql",
+        "utf8",
+      ),
+    );
+    assert.equal(
+      (
+        await db.query<{ n: number }>(
+          "select count(*)::int n from checkouts where reorder_kind is not null",
+        )
+      ).rows[0].n,
+      2,
+    );
+    for (const role of ["anon", "authenticated"]) {
+      await db.exec(`set role ${role}`);
+      await assert.rejects(
+        submit(crypto.randomUUID(), "repeat"),
+        /permission denied/,
+      );
+      await db.exec("reset role");
+    }
+  } finally {
+    await db.close();
+  }
+});
+
+test("Postgres: Aligo-only migration retires SMS work without resending history or enabling delivery", async () => {
+  const migration = await readFile(
+    "supabase/migrations/202610100001_aligo_only_notifications.sql",
+    "utf8",
+  );
+  for (const legacyConnection of [false, true]) {
+    const db = await setup(true, true, true, false);
+    try {
+      await db.query(
+        "select configure_notification_delivery(true,'aligo',false,$1)",
+        [staff],
+      );
+      const legacy = [];
+      for (const status of [
+        "pending",
+        "failed",
+        "sending",
+        "accepted",
+        "unknown",
+      ]) {
+        const request = crypto.randomUUID();
+        await db.query("select submit_checkout($1,$2::jsonb)", [
+          request,
+          JSON.stringify(payload([delivery([{ productId: p2, quantity: 1 }])])),
+        ]);
+        const row = (
+          await db.query<{ id: string }>(
+            "select n.id from order_notifications n join checkouts c on c.id=n.checkout_id where c.request_id=$1",
+            [request],
+          )
+        ).rows[0];
+        await db.query(
+          "update order_notifications set provider='solapi',status=$2,provider_id='old-message',prepared_message=$3 where id=$1",
+          [
+            row.id,
+            status,
+            JSON.stringify({ text: "보존할 이전 본문", subject: "이전 안내" }),
+          ],
+        );
+        legacy.push({ id: row.id, status });
+      }
+      await db.query("select submit_checkout($1,$2::jsonb)", [
+        crypto.randomUUID(),
+        JSON.stringify(payload([delivery([{ productId: p2, quantity: 1 }])])),
+      ]);
+      const aligoBefore = (
+        await db.query(
+          "select * from order_notifications where provider='aligo'",
+        )
+      ).rows;
+      const ordersBefore = (
+        await db.query("select * from checkouts order by id")
+      ).rows;
+      if (legacyConnection)
+        await db.exec(
+          "update notification_settings set provider='solapi',enabled=true,test_mode=false where id=1",
+        );
+      await db.exec(migration);
+      const settings = (
+        await db.query<{
+          provider: string;
+          enabled: boolean;
+          test_mode: boolean;
+        }>("select * from notification_settings")
+      ).rows[0];
+      assert.equal(settings.provider, "aligo");
+      assert.equal(settings.enabled, !legacyConnection);
+      assert.equal(settings.test_mode, legacyConnection);
+      assert.deepEqual(
+        (await db.query("select * from checkouts order by id")).rows,
+        ordersBefore,
+      );
+      assert.deepEqual(
+        (
+          await db.query(
+            "select * from order_notifications where provider='aligo'",
+          )
+        ).rows,
+        aligoBefore,
+      );
+      for (const original of legacy) {
+        const row = (
+          await db.query<{
+            status: string;
+            provider_id: string;
+            prepared_message: { text: string };
+          }>("select * from order_notifications where id=$1", [original.id])
+        ).rows[0];
+        assert.equal(
+          row.status,
+          ["pending", "failed"].includes(original.status)
+            ? "skipped"
+            : original.status === "sending"
+              ? "unknown"
+              : original.status,
+        );
+        assert.equal(row.provider_id, "old-message");
+        assert.equal(row.prepared_message.text, "보존할 이전 본문");
+      }
+      const after = (
+        await db.query("select * from order_notifications order by id")
+      ).rows;
+      await db.exec(migration);
+      assert.deepEqual(
+        (await db.query("select * from order_notifications order by id")).rows,
+        after,
+      );
+      assert.equal(
+        (
+          await db.query<{ name: string | null }>(
+            "select to_regprocedure('public.claim_order_notifications(integer)') as name",
+          )
+        ).rows[0].name,
+        null,
+      );
+      await assert.rejects(
+        db.query(
+          "select configure_notification_delivery(true,'solapi',false,$1)",
+          [staff],
+        ),
+        /연결 설정/,
+      );
+      // Settings changes and old request retries cannot revive the retired queue.
+      await db.query(
+        "select configure_notification_delivery(true,'aligo',false,$1)",
+        [staff],
+      );
+      await assert.rejects(
+        db.query("select retry_order_notification($1,$2)", [
+          legacy[1].id,
+          staff,
+        ]),
+        /이전 문자 서비스/,
+      );
+      const claimed = (
+        await db.query<NotificationJob>(
+          "select * from claim_notification_delivery('aligo',false,10)",
+        )
+      ).rows;
+      assert.equal(claimed.length, 1);
+      assert.ok(
+        claimed.every(
+          (row) => row.provider === "aligo" && row.recipient_role === "sender",
+        ),
+      );
+      assert.equal(
+        (
+          await db.query(
+            "select * from claim_notification_delivery('solapi',false,10)",
+          )
+        ).rows.length,
+        0,
+      );
+      assert.equal(
+        (
+          await db.query(
+            "select * from claim_notification_delivery('aligo',false,10)",
+          )
+        ).rows.length,
+        0,
+      );
+    } finally {
+      await db.close();
+    }
+  }
+});
+
+test("Postgres: historical Aligo migration isolates providers/test mode and preserves history", async () => {
+  const db = await setup(true, true, true, false);
+  try {
+    const configure = (provider: string, testMode: boolean, enabled = true) =>
+      db.query("select configure_notification_delivery($1,$2,$3,$4)", [
+        enabled,
+        provider,
+        testMode,
+        staff,
+      ]);
+    const submit = async () => {
+      const requestId = crypto.randomUUID();
+      await db.query("select submit_checkout($1,$2::jsonb)", [
+        requestId,
+        JSON.stringify(
+          payload([
+            delivery([{ productId: p2, quantity: 1 }]),
+            delivery([{ productId: p2, quantity: 2 }]),
+          ]),
+        ),
+      ]);
+      return (
+        await db.query<{ id: string }>(
+          "select id from checkouts where request_id=$1",
+          [requestId],
+        )
+      ).rows[0].id;
+    };
+    await configure("solapi", false);
+    await submit();
+    await configure("aligo", true);
+    assert.equal(
+      (
+        await db.query<{ status: string }>(
+          "select status from order_notifications",
+        )
+      ).rows[0].status,
+      "skipped",
+    );
+    const first = await submit();
+    const claim = (testMode = true) =>
+      db.query<NotificationJob>(
+        "select * from claim_notification_delivery('aligo',$1,10)",
+        [testMode],
+      );
+    assert.equal(
+      (await db.query("select * from claim_order_notifications(10)")).rows
+        .length,
+      0,
+    );
+    assert.equal((await claim(false)).rows.length, 0);
+    const job = (await claim()).rows[0];
+    assert.equal(job.provider, "aligo");
+    assert.equal(job.test_mode, true);
+    assert.equal(job.phone, sender.phone);
+    const vars = aligoVariables(job);
+    assert.equal(vars.주문금액, "57,000");
+    assert.match(vars.배송지정보, /가상 주소 테스트/);
+    assert.match(vars.배송지정보, /한라봉 3kg.*× 2/);
+    assert.equal((await claim()).rows.length, 0);
+    await assert.rejects(configure("aligo", false), /전송 중/);
+    const prepared = {
+      text: "정확한 등록 본문\n시험",
+      subject: "주문접수",
+      templateCode: "UM_0746",
+    };
+    const prepare = (attempt: number) =>
+      db.query<{ ready: boolean }>(
+        "select prepare_order_notification($1,$2,'aligo',true,$3) as ready",
+        [job.id, attempt, JSON.stringify(prepared)],
+      );
+    assert.equal((await prepare(job.attempts + 1)).rows[0].ready, false);
+    assert.equal((await prepare(job.attempts)).rows[0].ready, true);
+    await db.query(
+      "update order_notifications set status='tested',provider_code='0' where id=$1",
+      [job.id],
+    );
+    await db.query("select retry_order_notification($1,$2)", [job.id, staff]);
+    assert.equal((await claim()).rows.length, 0);
+    await configure("aligo", false);
+    await db.query("select retry_order_notification($1,$2)", [job.id, staff]);
+    assert.equal((await claim(false)).rows.length, 0);
+    const ids = (
+      await db.query<{ id: string }>(
+        "select id from deliveries where checkout_id=$1",
+        [first],
+      )
+    ).rows.map((r) => r.id);
+    await db.query("select change_checkout($1,'pay',$2,'cash')", [
+      first,
+      staff,
+    ]);
+    await db.query("select commit_export($1,$2,'test.xlsx','file',$3)", [
+      crypto.randomUUID(),
+      ids,
+      staff,
+    ]);
+    assert.equal((await claim(false)).rows.length, 0);
+    await db.query("select mark_shipped($1,$2)", [ids, staff]);
+    await db.query("select mark_shipped($1,$2)", [ids, staff]);
+    const shipped = (await claim(false)).rows;
+    assert.equal(shipped.length, 2);
+    assert.ok(shipped.every((j) => aligoVariables(j).보내는분 === sender.name));
+    await db.query(
+      "update order_notifications set status='unknown' where id=$1",
+      [shipped[0].id],
+    );
+    await db.query("select retry_order_notification($1,$2)", [
+      shipped[0].id,
+      staff,
+    ]);
+    assert.equal((await claim(false)).rows.length, 0);
+    await db.query(
+      "update order_notifications set status='failed' where id=$1",
+      [shipped[1].id],
+    );
+    await configure("solapi", false);
+    await assert.rejects(
+      db.query("select retry_order_notification($1,$2)", [
+        shipped[1].id,
+        staff,
+      ]),
+      /현재 연결과 다른/,
+    );
+    await configure("aligo", false);
+    await db.query("select retry_order_notification($1,$2)", [
+      shipped[1].id,
+      staff,
+    ]);
+    assert.equal((await claim(false)).rows.length, 1);
+    await db.query(
+      "update order_notifications set updated_at=now()-interval '6 minutes' where id=$1",
+      [shipped[1].id],
+    );
+    await configure("solapi", false);
+    assert.equal(
+      (
+        await db.query<{ status: string }>(
+          "select status from order_notifications where id=$1",
+          [shipped[1].id],
+        )
+      ).rows[0].status,
+      "unknown",
+    );
+    await configure("aligo", true);
+    await submit();
+    const disableJob = (await claim()).rows[0];
+    await configure("aligo", true, false);
+    assert.equal(
+      (
+        await db.query<{ ready: boolean }>(
+          "select prepare_order_notification($1,$2,'aligo',true,$3) as ready",
+          [disableJob.id, disableJob.attempts, JSON.stringify(prepared)],
+        )
+      ).rows[0].ready,
+      false,
+    );
+    const history = (
+      await db.query("select * from order_notifications order by id")
+    ).rows;
+    await db.exec(
+      await readFile(
+        "supabase/migrations/202610060001_aligo_notifications.sql",
+        "utf8",
+      ),
+    );
+    assert.deepEqual(
+      (await db.query("select * from order_notifications order by id")).rows,
+      history,
+    );
+    assert.deepEqual(
+      (
+        await db.query<{ prepared_message: unknown }>(
+          "select prepared_message from order_notifications where id=$1",
+          [job.id],
+        )
+      ).rows[0].prepared_message,
+      prepared,
+    );
+    for (const role of ["anon", "authenticated"]) {
+      await db.exec(`set role ${role}`);
+      await assert.rejects(
+        db.query("select * from claim_notification_delivery('aligo',true,3)"),
+      );
+      await assert.rejects(
+        db.query(
+          "select configure_notification_delivery(true,'aligo',true,$1)",
+          [staff],
+        ),
+      );
+      await assert.rejects(
+        db.query("select prepare_order_notification($1,1,'aligo',true,'{}')", [
+          job.id,
+        ]),
+      );
+      await db.exec("reset role");
+    }
+  } finally {
+    await db.close();
+  }
+});
+
+test("Postgres: Aligo only notifies sender for different/same recipient phones and keeps sender retries idempotent", async () => {
+  const db = await setup();
+  try {
+    await db.query(
+      "select configure_notification_delivery(true,'aligo',true,$1)",
+      [staff],
+    );
+    const request = crypto.randomUUID();
+    await db.query("select submit_checkout($1,$2::jsonb)", [
+      request,
+      JSON.stringify(
+        payload([
+          {
+            ...delivery([{ productId: p2, quantity: 2 }]),
+            recipient: { ...recipient, phone: "01099998888" },
+          },
+          delivery([{ productId: p2, quantity: 1 }]),
+        ]),
+      ),
+    ]);
+    const receipt = (
+      await db.query<NotificationJob & { checkout_id: string }>(
+        "select * from order_notifications",
+      )
+    ).rows;
+    assert.equal(receipt.length, 1);
+    assert.equal(receipt[0].event, "received");
+    assert.equal(receipt[0].phone, sender.phone);
+    assert.equal(receipt[0].recipient_role, "sender");
+    await db.query(
+      "update order_notifications set status='tested' where id=$1",
+      [receipt[0].id],
+    );
+    const order = receipt[0].checkout_id;
+    const ids = (
+      await db.query<{ id: string }>(
+        "select id from deliveries where checkout_id=$1 order by position",
+        [order],
+      )
+    ).rows.map((row) => row.id);
+    await db.query("select change_checkout($1,'pay',$2,'card')", [
+      order,
+      staff,
+    ]);
+    await db.query("select commit_export($1,$2,'test.xlsx','file',$3)", [
+      crypto.randomUUID(),
+      ids,
+      staff,
+    ]);
+    await db.query("select mark_shipped($1,$2)", [ids, staff]);
+    await db.query("select mark_shipped($1,$2)", [ids, staff]);
+    const jobs = (
+      await db.query<NotificationJob & { delivery_id: string }>(
+        "select * from claim_notification_delivery('aligo',true,10)",
+      )
+    ).rows;
+    assert.equal(jobs.length, 2);
+    assert.ok(
+      jobs.every(
+        (job) => job.recipient_role === "sender" && job.phone === sender.phone,
+      ),
+    );
+    const first = jobs.filter((job) => job.delivery_id === ids[0]);
+    assert.deepEqual(first.map((job) => job.phone).sort(), [sender.phone]);
+    assert.equal(jobs.filter((job) => job.delivery_id === ids[1]).length, 1);
+    const failed = jobs[0];
+    assert.equal(failed.phone, sender.phone);
+    await db.query(
+      "update order_notifications set status=case when id=$1 then 'failed' else 'tested' end where event='shipped'",
+      [failed.id],
+    );
+    await db.query("select retry_order_notification($1,$2)", [
+      failed.id,
+      staff,
+    ]);
+    const retry = (
+      await db.query<NotificationJob>(
+        "select * from claim_notification_delivery('aligo',true,10)",
+      )
+    ).rows;
+    assert.equal(retry.length, 1);
+    assert.equal(retry[0].id, failed.id);
+    assert.equal(retry[0].attempts, 2);
+    assert.equal(
+      (
+        await db.query(
+          "select * from claim_notification_delivery('aligo',true,10)",
+        )
+      ).rows.length,
+      0,
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select * from order_notifications where event='shipped'",
+        )
+      ).rows.length,
+      2,
+    );
+  } finally {
+    await db.close();
+  }
+});
+
+test("Postgres: sender-only migration skips old recipient work, preserves sent history and blocks prepare/retry", async () => {
+  const db = await setup();
+  try {
+    // Reproduce an installation that already ran the previous recipient policy.
+    await db.exec(
+      await readFile(
+        "supabase/migrations/202610060001_aligo_notifications.sql",
+        "utf8",
+      ),
+    );
+    await db.query(
+      "select configure_notification_delivery(true,'aligo',true,$1)",
+      [staff],
+    );
+    const request = crypto.randomUUID();
+    await db.query("select submit_checkout($1,$2::jsonb)", [
+      request,
+      JSON.stringify(
+        payload(
+          Array.from({ length: 4 }, () => ({
+            ...delivery([{ productId: p2, quantity: 1 }]),
+            recipient: { ...recipient, phone: "01099998888" },
+          })),
+        ),
+      ),
+    ]);
+    const order = (
+      await db.query<{ id: string }>(
+        "select id from checkouts where request_id=$1",
+        [request],
+      )
+    ).rows[0].id;
+    const ids = (
+      await db.query<{ id: string }>(
+        "select id from deliveries where checkout_id=$1 order by position",
+        [order],
+      )
+    ).rows.map((row) => row.id);
+    await db.query("select change_checkout($1,'pay',$2,'card')", [
+      order,
+      staff,
+    ]);
+    await db.query("select commit_export($1,$2,'test.xlsx','file',$3)", [
+      crypto.randomUUID(),
+      ids,
+      staff,
+    ]);
+    await db.query("select mark_shipped($1,$2)", [ids, staff]);
+    const oldRecipients = (
+      await db.query<NotificationJob>(
+        "select * from order_notifications where recipient_role='recipient' order by delivery_id",
+      )
+    ).rows;
+    assert.equal(oldRecipients.length, 4);
+    for (const [index, status] of [
+      "pending",
+      "failed",
+      "accepted",
+      "sending",
+    ].entries()) {
+      await db.query(
+        "update order_notifications set status=$1,attempts=1 where id=$2",
+        [status, oldRecipients[index].id],
+      );
+    }
+    const kept = (
+      await db.query(
+        "select * from order_notifications where recipient_role='sender' or status='accepted' order by id",
+      )
+    ).rows;
+    const settings = (await db.query("select * from notification_settings"))
+      .rows;
+    const sql = await readFile(
+      "supabase/migrations/202610070001_sender_only_notifications.sql",
+      "utf8",
+    );
+    await db.exec(sql);
+    await db.exec(sql);
+    assert.deepEqual(
+      (await db.query("select * from notification_settings")).rows,
+      settings,
+    );
+    assert.deepEqual(
+      (
+        await db.query(
+          "select * from order_notifications where recipient_role='sender' or status='accepted' order by id",
+        )
+      ).rows,
+      kept,
+    );
+    assert.deepEqual(
+      (
+        await db.query<{ status: string }>(
+          "select status from order_notifications where id=any($1) order by id",
+          [[oldRecipients[0].id, oldRecipients[1].id]],
+        )
+      ).rows.map((row) => row.status),
+      ["skipped", "skipped"],
+    );
+    await assert.rejects(
+      db.query("select retry_order_notification($1,$2)", [
+        oldRecipients[1].id,
+        staff,
+      ]),
+      /받는 분 대상/,
+    );
+    assert.equal(
+      (
+        await db.query<{ ready: boolean }>(
+          "select prepare_order_notification($1,1,'aligo',true,'{\"text\":\"test\"}') as ready",
+          [oldRecipients[3].id],
+        )
+      ).rows[0].ready,
+      false,
+    );
+    // Covers an obsolete worker putting a recipient job back in pending.
+    await db.query(
+      "update order_notifications set status='pending' where id=$1",
+      [oldRecipients[0].id],
+    );
+    const jobs = (
+      await db.query<NotificationJob>(
+        "select * from claim_notification_delivery('aligo',true,10)",
+      )
+    ).rows;
+    assert.equal(jobs.length, 5);
+    assert.ok(
+      jobs.every(
+        (job) => job.recipient_role === "sender" && job.phone === sender.phone,
+      ),
+    );
+  } finally {
+    await db.close();
+  }
+});
+
 test("Postgres: tracking import handles multiple numbers, replacement, concurrency, permissions and notifications", async () => {
   const db = await setup();
   try {
@@ -397,8 +1208,11 @@ test("Postgres: cancellation upgrade preserves history, accepts paid orders and 
     assert.deepEqual(after.items, before.items);
     assert.deepEqual(after.sequence, before.sequence);
     assert.equal(
-      (await db.query("select * from claim_order_notifications(10)")).rows
-        .length,
+      (
+        await db.query(
+          "select * from claim_notification_delivery('aligo',true,10)",
+        )
+      ).rows.length,
       0,
     );
     assert.ok(
@@ -610,7 +1424,9 @@ test("Postgres: notification outbox is opt-in, atomic, sender-only and idempoten
       1,
     );
     const claim = () =>
-      db.query<{ id: string }>("select * from claim_order_notifications(10)");
+      db.query<{ id: string }>(
+        "select * from claim_notification_delivery('aligo',true,10)",
+      );
     assert.equal((await claim()).rows.length, 1);
     assert.equal((await claim()).rows.length, 0);
     await db.query(
@@ -704,7 +1520,7 @@ test("Postgres: notification outbox is opt-in, atomic, sender-only and idempoten
     await db.exec("set role anon");
     await assert.rejects(db.query("select * from order_notifications"));
     await assert.rejects(
-      db.query("select * from claim_order_notifications(1)"),
+      db.query("select * from claim_notification_delivery('aligo',true,1)"),
     );
     await db.exec("reset role; set role authenticated");
     await assert.rejects(db.query("select * from order_notifications"));

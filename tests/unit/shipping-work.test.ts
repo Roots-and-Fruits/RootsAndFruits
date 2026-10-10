@@ -19,7 +19,7 @@ const order = (
   deliveries: Shipment[],
 ) => ({ status, order_number: number, deliveries }) as Checkout;
 
-test("shipping queue filters per delivery and sorts by departure descending, then order and position ascending", () => {
+test("shipping queue filters per delivery and sorts by departure and order descending, then position ascending", () => {
   const rows = shippingRows([
     order("paid", 9, [
       delivery("2026-10-06", "exported", 2),
@@ -34,9 +34,9 @@ test("shipping queue filters per delivery and sorts by departure descending, the
   assert.deepEqual(
     rows.map((r) => [r.checkout.order_number, r.delivery.position]),
     [
-      [8, 1],
       [9, 1],
       [9, 2],
+      [8, 1],
       [10, 1],
     ],
   );

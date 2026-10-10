@@ -106,7 +106,7 @@ test("Excel preserves old column order, actual units, leading zeros and plain te
   );
   assert.equal(sheet.getCell("N2").value, 4);
   assert.equal(sheet.rowCount, 2);
-  assert.equal(sheet.getCell("O2").value, "123-2");
+  assert.equal(sheet.getCell("O2").value, "주문번호:123-2");
   assert.equal(sheet.getCell("C2").value, "01012345678");
   assert.equal(sheet.getCell("J2").value, "01234");
   assert.equal(sheet.getCell("B2").value, "=1+1");
@@ -115,10 +115,13 @@ test("Excel preserves old column order, actual units, leading zeros and plain te
 });
 test("Excel uses experience descriptions while retaining general product weights", async () => {
   const checkout = {
+    order_number: 123,
     category: "experience",
     sender: { name: "보내는 분", phone: "01012345678" },
   } as Checkout;
   const delivery = {
+    processing_date: "2026-10-09",
+    position: 1,
     recipient: {
       name: "받는 분",
       phone: "01087654321",
@@ -133,13 +136,18 @@ test("Excel uses experience descriptions while retaining general product weights
   const buffer = await shippingWorkbook(
     [
       { checkout, delivery },
-      { checkout: { ...checkout, category: "product" }, delivery },
+      {
+        checkout: { ...checkout, category: "product", order_number: 124 },
+        delivery,
+      },
     ],
     { postal_code: "00001", address: "사업장" },
   );
   const book = new ExcelJS.Workbook();
   await book.xlsx.load(buffer as unknown as ExcelJS.Buffer);
-  assert.equal(book.worksheets[0].getCell("L2").value, "체험귤 2EA");
-  assert.equal(book.worksheets[0].getCell("L3").value, "택배 1kg · 체험귤 2EA");
+  assert.equal(book.worksheets[0].getCell("O2").value, "주문번호:124-1");
+  assert.equal(book.worksheets[0].getCell("O3").value, "주문번호:123-1");
+  assert.equal(book.worksheets[0].getCell("L2").value, "택배 1kg · 체험귤 2EA");
+  assert.equal(book.worksheets[0].getCell("L3").value, "체험귤 2EA");
   assert.equal(book.worksheets[0].getCell("N2").value, 2);
 });

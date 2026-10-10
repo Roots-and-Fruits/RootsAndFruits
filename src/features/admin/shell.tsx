@@ -11,7 +11,7 @@ const links = [
   ["shipping", "발송 관리"],
   ["products", "상품·재고"],
   ["settings", "설정"],
-  ["notifications", "문자 내역"],
+  ["notifications", "알림 내역"],
 ];
 function NavigationPending() {
   const { pending } = useLinkStatus();

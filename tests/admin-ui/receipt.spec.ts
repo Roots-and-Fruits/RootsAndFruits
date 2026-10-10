@@ -124,10 +124,14 @@ test("counter lists aggregated items and receipt prints snapshots without export
   const exportsBefore = await (
     await page.request.get("/api/admin/exports")
   ).json();
+  await expect(page.getByRole("link", { name: /주문서 인쇄/ })).toHaveCount(0);
+  await row.click();
+  const printLink = page
+    .getByRole("dialog")
+    .getByRole("link", { name: `${order.order_number}번 주문서 인쇄 (새 창)` });
+  await expect(printLink.locator("svg")).toHaveCount(0);
   const popupPromise = page.waitForEvent("popup");
-  await page
-    .getByRole("link", { name: `${order.order_number}번 주문서 인쇄 (새 창)` })
-    .click();
+  await printLink.click();
   const popup = await popupPromise;
   const receipt = popup.getByRole("article", {
     name: `${order.order_number}번 주문서`,
@@ -140,6 +144,8 @@ test("counter lists aggregated items and receipt prints snapshots without export
   await expect(receipt).toContainText("가상 수령인2");
   await expect(receipt).toContainText(note);
   await expect(receipt.locator("script")).toHaveCount(0);
+  // The source dialog may already close when the print tab takes focus.
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const width = (await receipt.boundingBox())!.width;
   expect(width).toBeCloseTo((72 * 96) / 25.4, 0);
@@ -153,6 +159,9 @@ test("counter lists aggregated items and receipt prints snapshots without export
       document.body.dataset.printCalled = "yes";
     };
   });
+  await expect(
+    popup.getByRole("button", { name: "인쇄", exact: true }).locator("svg"),
+  ).toHaveCount(0);
   await popup.getByRole("button", { name: "인쇄", exact: true }).click();
   await expect(popup.locator("body")).toHaveAttribute(
     "data-print-called",
@@ -179,7 +188,7 @@ test("counter lists aggregated items and receipt prints snapshots without export
     page.getByRole("link", {
       name: `${order.order_number}번 주문서 인쇄 (새 창)`,
     }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page
     .getByRole("button", {
       name: `${order.order_number}번 인쇄 확인 고객 주문 상세`,

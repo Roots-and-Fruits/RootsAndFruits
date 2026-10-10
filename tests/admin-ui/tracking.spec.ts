@@ -6,10 +6,16 @@ async function file(rows: [string, string][]) {
   const w = new ExcelJS.Workbook(),
     s = w.addWorksheet("Sheet0");
   s.getCell("G1").value = "운송장번호";
+  s.getCell("AJ1").value = "특기사항";
   s.getCell("AO1").value = "고객메세지";
   rows.forEach(([key, number], i) => {
     s.getCell(`G${i + 2}`).value = number;
-    s.getCell(`AO${i + 2}`).value = key;
+    const column = i % 2 ? "AO" : "AJ";
+    s.getCell(`${column}${i + 2}`).value = /^\d/.test(key)
+      ? `주문번호:${key}`
+      : key;
+    if (column === "AO" && key)
+      s.getCell(`AJ${i + 2}`).value = "문 앞에 놓아주세요";
   });
   return {
     name: "송장내역.xlsx",
@@ -68,9 +74,11 @@ test("tracking upload previews errors, retries saved requests, replaces numbers 
     [otherKey, "009999999999"],
     ["", "008888888888"],
     ["999999-1", "007777777777"],
+    ["문 앞에 놓아주세요", "not a number"],
   ]);
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("매핑 2곳 · 제외 2행 · 중복 송장 1행");
+  await expect(dialog).toContainText("주문번호 표기 없음 1행 건너뜀");
   await expect(dialog).toContainText("배송 식별자가 없습니다.");
   await expect(dialog).toContainText("배송 식별자에 해당하는 주문이 없습니다.");
   expect(

@@ -127,6 +127,7 @@ test("counter loads catalog only when reopening a reorder and supports retry or 
   expect(productRequests).toBe(0);
   await row.click();
   await page.getByRole("button", { name: "주문 재접수", exact: true }).click();
+  await page.getByRole("button", { name: "재주문", exact: true }).click();
   await expect(page.locator("main").getByRole("alert")).toContainText(
     "재접수 상품 테스트 오류",
   );
@@ -136,6 +137,7 @@ test("counter loads catalog only when reopening a reorder and supports retry or 
   await page.getByRole("button", { name: "목록으로 돌아가기" }).click();
   await row.click();
   await page.getByRole("button", { name: "주문 재접수", exact: true }).click();
+  await page.getByRole("button", { name: "재주문", exact: true }).click();
   await expect(page.locator("main").getByRole("alert")).toContainText(
     "재접수 상품 테스트 오류",
   );

@@ -46,6 +46,12 @@ export const submitSchema = z.object({
   requestId: z.string().uuid(),
   order: checkoutSchema,
 });
+export const reorderKindSchema = z.enum(["correction", "repeat"]);
+export type ReorderKind = z.infer<typeof reorderKindSchema>;
+// Missing kind supports unresolved submissions from the previous application.
+export const reorderSubmitSchema = submitSchema.extend({
+  reorderKind: reorderKindSchema.optional(),
+});
 export const productFieldsSchema = z.object({
   id: z.string().uuid().nullable(),
   category: z.enum(["product", "experience"]),
@@ -147,6 +153,7 @@ export type Checkout = {
   paid_at?: string | null;
   original_id: string | null;
   original_number?: number | null;
+  reorder_kind?: ReorderKind | null;
   created_at: string;
   deliveries: Shipment[];
 };

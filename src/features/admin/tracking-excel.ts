@@ -24,6 +24,29 @@ function cellString(cell: ExcelJS.Cell): string | null {
   return null;
 }
 
+function deliveryIdentifier(
+  values: (string | null)[],
+): Pick<TrackingInputRow, "key" | "error" | "skipped"> {
+  // Only an explicit prefix at the start identifies one of our deliveries.
+  // A valid AJ identifier wins; AO is a fallback, never a guess by recipient.
+  const tagged = values.filter(
+    (value): value is string => value?.startsWith("주문번호") ?? false,
+  );
+  for (const value of tagged) {
+    const match = /^주문번호\s*:\s*(.+)$/.exec(value);
+    if (match && trackingKey.test(match[1])) return { key: match[1] };
+  }
+  if (tagged.length)
+    return {
+      key: tagged[0].slice(0, 80),
+      error: "배송 식별자는 주문번호:79-1 형식이어야 합니다.",
+    };
+  if (values.some((value) => value === null))
+    return { key: "", error: "배송 식별자가 텍스트가 아닙니다." };
+  if (values.some((value) => value)) return { key: "", skipped: true };
+  return { key: "", error: "배송 식별자가 없습니다." };
+}
+
 // Bound expansion before ExcelJS inflates an untrusted archive.
 function checkArchive(data: Buffer) {
   const end = data.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
@@ -67,37 +90,45 @@ export async function readTrackingWorkbook(
   const sheets = workbook.worksheets.filter(
     (s) =>
       cellString(s.getCell("G1")) === "운송장번호" &&
-      cellString(s.getCell("AO1")) === "고객메세지",
+      (cellString(s.getCell("AJ1")) === "특기사항" ||
+        cellString(s.getCell("AO1")) === "고객메세지"),
   );
   if (sheets.length !== 1)
     throw new Error(
-      "1행 G열 ‘운송장번호’, AO열 ‘고객메세지’가 있는 시트가 하나여야 합니다.",
+      "1행 G열 ‘운송장번호’와 AJ열 ‘특기사항’ 또는 AO열 ‘고객메세지’가 있는 시트가 하나여야 합니다.",
     );
+  const sheet = sheets[0];
+  // Ignore a column entirely if its header does not identify the expected field.
+  const identifierColumns = [
+    ...(cellString(sheet.getCell("AJ1")) === "특기사항" ? [36] : []),
+    ...(cellString(sheet.getCell("AO1")) === "고객메세지" ? [41] : []),
+  ];
   const rows: TrackingInputRow[] = [];
-  sheets[0].eachRow((row, rowNumber) => {
+  sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
     if (rows.length >= trackingRowLimit)
       throw new Error("한 번에 데이터 1,000행까지 업로드할 수 있습니다.");
-    const key = cellString(row.getCell(41));
+    const identifier = deliveryIdentifier(
+      identifierColumns.map((column) => cellString(row.getCell(column))),
+    );
+    if (identifier.skipped) {
+      rows.push({ row: rowNumber, key: "", number: "", skipped: true });
+      return;
+    }
     const raw = cellString(row.getCell(7));
     const number = raw?.replace(/[\s-]/g, "") ?? "";
     const error =
-      key === null
-        ? "배송 식별자가 텍스트가 아닙니다."
-        : !key
-          ? "배송 식별자가 없습니다."
-          : !trackingKey.test(key)
-            ? "배송 식별자는 주문번호-배송지순번 형식이어야 합니다."
-            : raw === null
-              ? "송장번호의 셀 형식 또는 숫자 정밀도를 확인해주세요."
-              : !number
-                ? "송장번호가 없습니다."
-                : !/^[0-9]{1,40}$/.test(number)
-                  ? "송장번호 형식을 확인해주세요."
-                  : undefined;
+      identifier.error ||
+      (raw === null
+        ? "송장번호의 셀 형식 또는 숫자 정밀도를 확인해주세요."
+        : !number
+          ? "송장번호가 없습니다."
+          : !/^[0-9]{1,40}$/.test(number)
+            ? "송장번호 형식을 확인해주세요."
+            : undefined);
     rows.push({
       row: rowNumber,
-      key: (key ?? "").slice(0, 80),
+      key: identifier.key,
       number: number.slice(0, 80),
       error,
     });

@@ -5,7 +5,6 @@ import { formatWon } from "@/features/orders/calculations";
 import { AdminButton } from "./admin-button";
 import { OrderNotes } from "./order-notes";
 import { TrackingNumbers } from "./tracking-numbers";
-import { ReceiptLink } from "./receipt-link";
 import { summarizeOrderItems } from "./order-summary";
 import {
   paymentMethodLabels,
@@ -18,7 +17,7 @@ import {
 const checkoutColumns =
   "lg:grid-cols-[4.5rem_7.5rem_5.5rem_minmax(0,1fr)_3rem_6.5rem_8rem]";
 const managementColumns =
-  "lg:grid-cols-[4.5rem_7.5rem_minmax(0,1fr)_3rem_6.5rem_8rem_7rem]";
+  "lg:grid-cols-[4rem_6rem_5rem_minmax(0,1.7fr)_3rem_6rem_8rem_104px_minmax(6rem,0.5fr)]";
 const shippingColumns =
   "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_7rem_12rem_6rem]";
 
@@ -27,13 +26,11 @@ function OrderList({
   columns,
   headings,
   children,
-  receipt = false,
 }: {
   label: string;
   columns: string;
   headings: string[];
   children: ReactNode;
-  receipt?: boolean;
 }) {
   return (
     <section
@@ -43,16 +40,13 @@ function OrderList({
       <div
         aria-hidden="true"
         className={cn(
-          "hidden items-center border-b bg-muted/50 text-xs font-medium text-muted-foreground lg:grid",
-          receipt && "lg:grid-cols-[minmax(0,1fr)_7rem]",
+          "hidden items-center gap-4 border-b bg-muted/50 px-4 py-3 text-xs font-medium text-muted-foreground lg:grid",
+          columns,
         )}
       >
-        <div className={cn("grid items-center gap-4 px-4 py-3", columns)}>
-          {headings.map((heading) => (
-            <span key={heading}>{heading}</span>
-          ))}
-        </div>
-        {receipt && <span>주문서 인쇄</span>}
+        {headings.map((heading) => (
+          <span key={heading}>{heading}</span>
+        ))}
       </div>
       <ul className="divide-y">{children}</ul>
     </section>
@@ -85,6 +79,38 @@ function PaymentStatus({
   );
 }
 
+function OrderProducts({ order }: { order: Checkout }) {
+  return summarizeOrderItems(order)
+    .map((item) => `${item.label} × ${item.quantity}`)
+    .join(", ");
+}
+
+function OrderTrackingNumbers({ order }: { order: Checkout }) {
+  const trackedDeliveries = order.deliveries
+    .filter((delivery) => delivery.tracking_numbers?.length)
+    .sort((a, b) => a.position - b.position);
+  if (!trackedDeliveries.length) return <span className="hidden lg:block" />;
+  return (
+    <span className="order-1 col-span-2 min-w-0 space-y-1 text-xs lg:order-none lg:col-span-1">
+      <span className="block text-muted-foreground lg:hidden">송장번호</span>
+      {trackedDeliveries.map((delivery) => (
+        <span key={delivery.id} className="block">
+          {order.deliveries.length > 1 && (
+            <span className="block text-muted-foreground [overflow-wrap:anywhere]">
+              배송지 {delivery.position} · {delivery.recipient.name}
+            </span>
+          )}
+          <TrackingNumbers
+            numbers={delivery.tracking_numbers}
+            label=""
+            className="text-xs"
+          />
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function CheckoutList({
   orders,
   counter,
@@ -99,23 +125,19 @@ export function CheckoutList({
     <OrderList
       label={counter ? "카운터 주문 목록" : "주문 관리 목록"}
       columns={columns}
-      receipt
       headings={[
         "주문번호",
         "접수 시각",
         "보내는 분",
-        ...(counter ? ["상품 · 수량"] : []),
+        "상품 · 수량",
         "배송지",
         "결제금액",
         "결제 상태",
-        ...(!counter ? ["발송 현황"] : []),
+        ...(!counter ? ["발송 현황", "송장번호"] : []),
       ]}
     >
       {orders.map((order) => (
-        <li
-          key={order.id}
-          className="grid items-center lg:grid-cols-[minmax(0,1fr)_7rem]"
-        >
+        <li key={order.id}>
           <button
             onClick={() => onOpen(order)}
             aria-label={`${order.order_number}번 ${order.sender.name} 주문 상세`}
@@ -147,16 +169,10 @@ export function CheckoutList({
               </span>
               {order.sender.name}
             </span>
-            {counter && (
-              <span className="order-1 col-span-2 min-w-0 text-xs leading-5 [overflow-wrap:anywhere] lg:order-none lg:col-span-1">
-                <span className="mr-2 text-muted-foreground lg:hidden">
-                  상품
-                </span>
-                {summarizeOrderItems(order)
-                  .map((item) => `${item.label} × ${item.quantity}`)
-                  .join(", ")}
-              </span>
-            )}
+            <span className="order-1 col-span-2 min-w-0 text-xs leading-5 [overflow-wrap:anywhere] lg:order-none lg:col-span-1">
+              <span className="mr-2 text-muted-foreground lg:hidden">상품</span>
+              <OrderProducts order={order} />
+            </span>
             <span className="text-right text-muted-foreground lg:text-left">
               <span className="lg:hidden">배송지 </span>
               {order.deliveries.length}곳
@@ -190,6 +206,7 @@ export function CheckoutList({
                 )}
               </span>
             )}
+            {!counter && <OrderTrackingNumbers order={order} />}
             {(order.original_id ||
               order.deliveries.some((d) => d.note.trim())) && (
               <span className="order-2 col-span-full min-w-0 border-t border-dashed pt-1 lg:order-none">
@@ -197,9 +214,6 @@ export function CheckoutList({
               </span>
             )}
           </button>
-          <div className="px-4 pb-3 lg:py-2 lg:pl-0">
-            <ReceiptLink order={order} />
-          </div>
         </li>
       ))}
     </OrderList>

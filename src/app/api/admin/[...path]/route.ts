@@ -19,7 +19,7 @@ import {
   productSchema,
   paymentSchema,
   settingsSchema,
-  submitSchema,
+  reorderSubmitSchema,
   type Checkout,
   type Shipment,
 } from "@/features/admin/schema";
@@ -27,9 +27,14 @@ import { shippingFilename, shippingWorkbook } from "@/features/admin/excel";
 import { trackingSaveSchema } from "@/features/admin/tracking";
 import {
   scheduleNotifications,
-  processNotifications,
-  smsReady,
+  notificationsReady,
+  notificationRuntime,
+  checkNotificationConnection,
 } from "@/features/notifications/server";
+import {
+  NotificationError,
+  notificationErrorText,
+} from "@/features/notifications/provider";
 export const maxDuration = 60;
 const uuid = z.string().uuid();
 const idsSchema = z
@@ -67,7 +72,7 @@ async function readAdmin(
         timing.measure("db_notification_settings", () =>
           db
             .from("notification_settings")
-            .select("enabled")
+            .select("enabled,provider,test_mode")
             .eq("id", 1)
             .single(),
         ),
@@ -75,7 +80,7 @@ async function readAdmin(
           db
             .from("order_notifications")
             .select(
-              "id,event,phone,payload,status,attempts,provider_id,error_code,created_at,updated_at",
+              "id,event,phone,payload,status,attempts,provider,test_mode,recipient_role,prepared_message,provider_id,provider_code,error_code,created_at,updated_at",
               { count: "exact" },
             )
             .order("created_at", { ascending: false })
@@ -88,7 +93,9 @@ async function readAdmin(
       return Response.json(
         {
           enabled: settings.data?.enabled,
-          ready: smsReady(),
+          activeProvider: settings.data?.provider,
+          activeTestMode: settings.data?.test_mode,
+          ...notificationRuntime(),
           rows: notifications.data,
           count: notifications.count,
         },
@@ -275,25 +282,46 @@ export async function POST(request: Request, context: Context) {
     if (path[0] === "notifications") {
       if (path[1] === "configure") {
         const enabled = z.boolean().parse(body.enabled);
-        if (enabled && !smsReady())
+        if (enabled && !notificationsReady())
           throw new HttpError(
-            "서버의 솔라피 키·발신번호·SMS_ENABLED 설정이 필요합니다.",
+            notificationErrorText("NOTIFICATION_NOT_CONFIGURED"),
           );
-        result = await db.rpc("configure_order_notifications", {
-          p_enabled: enabled,
-          p_actor: staff.id,
+        if (enabled) {
+          const runtime = await checkNotificationConnection();
+          result = await db.rpc("configure_notification_delivery", {
+            p_enabled: true,
+            p_provider: runtime.provider,
+            p_test_mode: runtime.testMode,
+            p_actor: staff.id,
+          });
+        } else
+          result = await db.rpc("configure_order_notifications", {
+            p_enabled: false,
+            p_actor: staff.id,
+          });
+      } else if (path[1] === "check") {
+        return Response.json(await checkNotificationConnection(), {
+          headers: { "Cache-Control": "private, no-store" },
         });
       } else if (path[1] === "retry") {
-        if (!smsReady())
-          throw new HttpError("서버의 문자 발송 설정을 확인해주세요.");
+        if (!notificationsReady())
+          throw new HttpError("서버의 알림 발송 설정을 확인해주세요.");
+        const id = uuid.parse(body.id);
+        const notification = await db
+          .from("order_notifications")
+          .select("provider,recipient_role")
+          .eq("id", id)
+          .single();
+        checkDb(notification.error);
+        if (
+          notification.data?.provider !== "aligo" ||
+          notification.data?.recipient_role === "recipient"
+        )
+          throw new HttpError("보내는 분 대상 알림톡만 재시도할 수 있습니다.");
         result = await db.rpc("retry_order_notification", {
-          p_id: uuid.parse(body.id),
+          p_id: id,
           p_actor: staff.id,
         });
-      } else if (path[1] === "process") {
-        if (!smsReady())
-          throw new HttpError("서버의 문자 발송 설정을 확인해주세요.");
-        return Response.json({ processed: await processNotifications() });
       } else throw new HttpError("찾을 수 없는 요청입니다.", 404);
     } else if (path[0] === "products" && path[1] === "order") {
       const value = z
@@ -331,13 +359,22 @@ export async function POST(request: Request, context: Context) {
         p_actor: staff.id,
       });
     } else if (path[0] === "orders" && path[2] === "reorder") {
-      const value = submitSchema.parse(body);
-      result = await db.rpc("submit_checkout", {
-        p_request: value.requestId,
-        p_payload: value.order,
-        p_actor: staff.id,
-        p_original: uuid.parse(path[1]),
-      });
+      const value = reorderSubmitSchema.parse(body);
+      result = await db.rpc(
+        value.reorderKind ? "submit_reorder_checkout" : "submit_checkout",
+        {
+          p_request: value.requestId,
+          p_payload: value.order,
+          p_actor: staff.id,
+          p_original: uuid.parse(path[1]),
+          ...(value.reorderKind ? { p_kind: value.reorderKind } : {}),
+        },
+      );
+      if (result.error?.code === "PGRST202")
+        throw new HttpError(
+          "재접수 구분 DB 업데이트가 필요합니다. 202610110001_reorder_kind.sql을 적용해주세요.",
+          503,
+        );
     } else if (path[0] === "orders") {
       const action = z.enum(["pay", "cancel"]).parse(path[2]);
       const paymentMethod =
@@ -442,6 +479,8 @@ export async function POST(request: Request, context: Context) {
       scheduleNotifications();
     return Response.json(result.data ?? { ok: true });
   } catch (error) {
+    if (error instanceof NotificationError)
+      return apiError(new HttpError(notificationErrorText(error.code)));
     return apiError(error);
   }
 }

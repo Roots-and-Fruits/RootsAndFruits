@@ -2,6 +2,15 @@
 
 이 단계는 새 개발 프로젝트를 기준으로 합니다. 기존 프로젝트의 데이터는 옮기지 않습니다.
 
+재접수 구분 추가 적용: 기존 마이그레이션 다음에 `supabase/migrations/202610110001_reorder_kind.sql` 전체를 SQL Editor에서 직접 실행합니다. 주문의 수정/재주문 구분 컬럼과 관리자 전용 접수 함수를 추가합니다. 기존 주문은 구분 없는 재접수로 유지하며 원본 취소·알림 발송·데이터 초기화는 실행하지 않습니다. 적용 후 관리자 화면을 새로고침합니다.
+
+알리고 알림톡 추가 적용: 기존 마이그레이션 다음에
+`supabase/migrations/202610060001_aligo_notifications.sql` →
+`supabase/migrations/202610070001_sender_only_notifications.sql` →
+`supabase/migrations/202610100001_aligo_only_notifications.sql` 순서로 아직 적용하지 않은 파일 전체를 SQL Editor에서 직접 실행합니다.
+접수·발송 수신자는 보내는 분으로 제한합니다. 마지막 파일은 이전 문자 대기/실패 작업과 재시도를 차단하고 알리고만 허용합니다. 기존 알리고 켜짐·테스트 설정은 보존하며 이전 문자 연결이었다면 알리고 꺼짐·테스트 모드로 전환합니다. 주문·이미 보낸 이력은 보존하며 SQL 실행 자체는 메시지를 보내지 않습니다.
+이후 환경변수 `ALIGO_ENABLED`와 관리자 연결 적용 순서는 [알림 설정](sms-setup.md)을 따릅니다.
+
 송장번호 업로드 추가 적용: 기존 마이그레이션이 적용되어 있다면
 `supabase/migrations/202610050002_delivery_tracking.sql` 전체를 SQL Editor에서 실행합니다.
 이 SQL은 배송지별 송장번호와 저장 요청 결과 테이블, 동시 변경 확인용 버전 및 관리자 함수를 추가합니다.
@@ -20,6 +29,10 @@
    - `supabase/migrations/202610030002_cancel_before_export.sql`
    - `supabase/migrations/202610050001_shipping_worklist.sql`
    - `supabase/migrations/202610050002_delivery_tracking.sql`
+   - `supabase/migrations/202610060001_aligo_notifications.sql`
+   - `supabase/migrations/202610070001_sender_only_notifications.sql`
+   - `supabase/migrations/202610100001_aligo_only_notifications.sql`
+   - `supabase/migrations/202610110001_reorder_kind.sql`
 3. 프로젝트 URL과 API Keys의 Publishable key·Secret key를 `.env.local`에 추가합니다. 기존 미리보기 설정은 덮어쓰지 않습니다.
 
    ```dotenv
@@ -107,7 +120,7 @@ select exists (
 - 기존 결제 방식·시각·금액·주문번호는 남기고 취소 상태·시각·관리자 이력을 기록합니다. 실제 차감된 재고만 한 번 반환하며 POS 결제 취소·환불은 사이트 밖에서 처리합니다.
 - 취소와 출력 확정이 같은 주문을 먼저 잠그도록 두 DB 함수를 함께 교체합니다. 먼저 확정된 작업에 따라 뒤의 취소 또는 출력이 거절됩니다. 출력 파일을 만드는 도중 취소됐으면 해당 출력 묶음은 저장되지 않습니다.
 - 기존 주문·상품·재고·주문번호 시퀀스를 초기화하거나 과거 주문을 취소하는 SQL이 아닙니다. 결제 방식의 상태 제약과 처리 함수만 갱신합니다.
-- 적용 후 미결제/결제 완료 주문의 출력 전 취소, 재시도 시 재고 중복 반환 방지, 두 배송지 중 한 곳만 출력해도 취소 차단, 취소 건의 출력/발송 차단을 확인합니다. 문자 기능은 기존처럼 취소된 주문의 대기 알림을 전송 대상에서 제외하며 취소 안내 문자를 새로 발송하지 않습니다.
+- 적용 후 미결제/결제 완료 주문의 출력 전 취소, 재시도 시 재고 중복 반환 방지, 두 배송지 중 한 곳만 출력해도 취소 차단, 취소 건의 출력/발송 차단을 확인합니다. 알림톡은 취소된 주문의 대기 알림을 전송 대상에서 제외하며 취소 안내를 새로 발송하지 않습니다.
 
 
 ## 발송관리 작업 목록 업데이트

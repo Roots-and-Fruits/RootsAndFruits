@@ -12,13 +12,20 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { adminRequest } from "./client";
-import { stateLabel, type Checkout, type AdminProduct } from "./schema";
+import {
+  stateLabel,
+  type Checkout,
+  type AdminProduct,
+  type ReorderKind,
+} from "./schema";
+import { reorderKindLabels } from "./reorder-label";
 import { ShippingWorkspace } from "./shipping-workspace";
 import { shippingRows } from "./shipping-work";
 import { OrderDetail } from "./order-detail";
 import { ReorderEditor } from "./reorder-editor";
 import { markAdminReady } from "./timing-client";
 import { CounterRefreshButton } from "./counter-refresh-button";
+import { getPendingSubmission } from "@/features/orders/submission-storage";
 const filterLabels = [
   ["number", "주문번호"],
   ["sender", "보내는 분"],
@@ -38,7 +45,10 @@ export function OrdersAdmin({ section }: { section: string }) {
     [applied, setApplied] = useState<Record<string, string>>({}),
     [revision, setRevision] = useState(0),
     [detail, setDetail] = useState<Checkout | null>(null),
-    [reorder, setReorder] = useState<Checkout | null>(null),
+    [reorder, setReorder] = useState<{
+      original: Checkout;
+      kind: ReorderKind;
+    } | null>(null),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
@@ -141,12 +151,13 @@ export function OrdersAdmin({ section }: { section: string }) {
   if (reorder)
     return (
       <ReorderEditor
-        original={reorder}
+        original={reorder.original}
+        kind={reorder.kind}
         onClose={() => setReorder(null)}
-        onDone={(number) => {
+        onDone={(number, kind) => {
           setReorder(null);
           setNotice(
-            `${number}번으로 재접수했습니다. 원본은 그대로 유지됩니다.`,
+            `${number}번으로 ${kind ? reorderKindLabels[kind] + " 접수" : "재접수"}했습니다. ${reorder.original.status === "cancelled" ? "원본은 취소 상태입니다." : "원본은 그대로 유지됩니다."}`,
           );
           reload();
         }}
@@ -399,9 +410,25 @@ export function OrdersAdmin({ section }: { section: string }) {
                   "주문을 취소하고 차감 재고를 반환했습니다.",
                 )
               }
-              onReorder={() => {
-                setReorder(detail);
+              onReorder={async (kind, cancelOriginal) => {
+                const shouldCancel =
+                  cancelOriginal && !getPendingSubmission(`admin:${detail.id}`);
+                if (shouldCancel) {
+                  const message = await act(
+                    `orders/${detail.id}/cancel`,
+                    {},
+                    "원본 주문을 취소했습니다.",
+                  );
+                  if (message) return message;
+                }
+                setReorder({
+                  original: shouldCancel
+                    ? { ...detail, status: "cancelled" }
+                    : detail,
+                  kind,
+                });
                 setDetail(null);
+                return null;
               }}
               onNote={(id, note) =>
                 act(`notes/${id}`, { note }, "메모를 저장했습니다.")

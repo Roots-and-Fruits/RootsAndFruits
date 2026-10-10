@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Printer } from "lucide-react";
 import { AdminButton } from "./admin-button";
 import { adminRequest } from "./client";
 import type { Checkout } from "./schema";
@@ -42,7 +41,6 @@ export function ReceiptPreview({ orderId }: { orderId: string }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <AdminButton disabled={!order} onClick={() => window.print()}>
-            <Printer aria-hidden="true" />
             인쇄
           </AdminButton>
           <AdminButton

@@ -4,6 +4,14 @@ import type { Checkout, Shipment } from "./schema";
 export type ShippingRow = { checkout: Checkout; delivery: Shipment };
 export const shippingRequestLimit = 1000;
 
+export function compareShippingRows(a: ShippingRow, b: ShippingRow): number {
+  return (
+    b.delivery.processing_date.localeCompare(a.delivery.processing_date) ||
+    b.checkout.order_number - a.checkout.order_number ||
+    a.delivery.position - b.delivery.position
+  );
+}
+
 export function shippingRows(orders: Checkout[]): ShippingRow[] {
   return orders
     .filter((c) => c.status === "paid")
@@ -12,12 +20,7 @@ export function shippingRows(orders: Checkout[]): ShippingRow[] {
         .filter((d) => d.status === "waiting" || d.status === "exported")
         .map((delivery) => ({ checkout, delivery })),
     )
-    .sort(
-      (a, b) =>
-        b.delivery.processing_date.localeCompare(a.delivery.processing_date) ||
-        a.checkout.order_number - b.checkout.order_number ||
-        a.delivery.position - b.delivery.position,
-    );
+    .sort(compareShippingRows);
 }
 
 export function canBulkExport(delivery: Shipment, today: string) {

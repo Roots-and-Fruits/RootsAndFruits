@@ -256,6 +256,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
     page.getByRole("button", { name: "주문 취소", exact: true }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "주문 재접수", exact: true }).click();
+  await page.getByRole("button", { name: "재주문", exact: true }).click();
   const addDelivery = page.getByRole("button", {
     name: "배송지 추가",
     exact: true,
@@ -307,7 +308,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   const reordered = await response.json();
   await expect(
     page.getByText(
-      `${reordered.orderNumber}번으로 재접수했습니다. 원본은 그대로 유지됩니다.`,
+      `${reordered.orderNumber}번으로 재주문 접수했습니다. 원본은 그대로 유지됩니다.`,
     ),
   ).toBeVisible();
   await page.getByRole("link", { name: "카운터", exact: true }).click();
@@ -322,7 +323,7 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   const reorderedRow = page.getByRole("button", {
     name: new RegExp(`^${reordered.orderNumber}번 고객`),
   });
-  const reorderNotice = `재접수 · 원본 ${result.data.orderNumber}번`;
+  const reorderNotice = `재주문 원본 ${result.data.orderNumber}번`;
   await expect(reorderedRow).toContainText(reorderNotice);
   await reorderedRow.click();
   await expect(

@@ -1,10 +1,11 @@
 import type { Checkout, Shipment } from "./schema";
+import { reorderOriginLabel } from "./reorder-label";
 
 export function ReorderNotice({ order }: { order: Checkout }) {
   if (!order.original_id) return null;
   return (
     <span className="inline-flex w-fit align-middle whitespace-nowrap rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-      재접수{order.original_number ? ` · 원본 ${order.original_number}번` : ""}
+      {reorderOriginLabel(order)}
     </span>
   );
 }

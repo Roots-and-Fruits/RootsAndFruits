@@ -7,6 +7,7 @@ import {
 } from "./schema";
 import { summarizeOrderItems } from "./order-summary";
 import styles from "./receipt.module.css";
+import { reorderOriginLabel } from "./reorder-label";
 
 export function OrderReceipt({ order }: { order: Checkout }) {
   const items = summarizeOrderItems(order);
@@ -52,10 +53,7 @@ export function OrderReceipt({ order }: { order: Checkout }) {
           </p>
         )}
         {order.original_id && (
-          <p>
-            재접수
-            {order.original_number ? ` · 원본 ${order.original_number}번` : ""}
-          </p>
+          <p>{reorderOriginLabel(order)}</p>
         )}
       </section>
       <section className={styles.section}>

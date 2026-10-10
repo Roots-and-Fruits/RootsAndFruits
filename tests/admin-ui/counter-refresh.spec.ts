@@ -266,8 +266,9 @@ test("counter pauses for detail/payment/reorder and hidden tabs, then reloads on
   await detail
     .getByRole("button", { name: "주문 재접수", exact: true })
     .click();
+  await page.getByRole("button", { name: "재주문", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "999번을 새 주문으로 재접수" }),
+    page.getByRole("heading", { name: "999번 주문 · 재주문" }),
   ).toBeVisible();
   baseline = calls;
   await page.clock.fastForward(30000);

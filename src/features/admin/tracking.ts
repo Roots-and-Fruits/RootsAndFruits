@@ -8,6 +8,7 @@ export type TrackingInputRow = {
   key: string;
   number: string;
   error?: string;
+  skipped?: boolean;
 };
 export type TrackingMatch = {
   id: string;
@@ -28,6 +29,7 @@ export type TrackingPreview = {
   groups: TrackingGroup[];
   excluded: TrackingInputRow[];
   duplicateCount: number;
+  skippedCount: number;
   rowCount: number;
   serverTime: string;
 };
@@ -70,7 +72,12 @@ export function groupTrackingRows(
   const groups = new Map<string, TrackingGroup>();
   const excluded: TrackingInputRow[] = [];
   let duplicateCount = 0;
+  let skippedCount = 0;
   for (const row of rows) {
+    if (row.skipped) {
+      skippedCount++;
+      continue;
+    }
     const match = lookup.get(row.key);
     const error =
       row.error ||
@@ -104,6 +111,7 @@ export function groupTrackingRows(
     groups: [...groups.values()],
     excluded,
     duplicateCount,
+    skippedCount,
     rowCount: rows.length,
     serverTime: new Date().toISOString(),
   };

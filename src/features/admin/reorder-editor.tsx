@@ -8,19 +8,28 @@ import {
 import { useState, useEffect } from "react";
 import { AdminButton as Button } from "./admin-button";
 import { adminRequest } from "./client";
-import { type Checkout, type AdminProduct, type Settings } from "./schema";
+import {
+  reorderKindSchema,
+  type ReorderKind,
+  type Checkout,
+  type AdminProduct,
+  type Settings,
+} from "./schema";
+import { reorderKindLabels } from "./reorder-label";
 import { dateInSeoul } from "@/features/orders/calculations";
 import { OrderEdit } from "@/features/orders/components/order-edit";
 import type { Sender, DeliveryDraft } from "@/features/orders/schema";
 import type { Product } from "@/features/catalog/types";
 export function ReorderEditor({
   original,
+  kind,
   onClose,
   onDone,
 }: {
   original: Checkout;
+  kind: ReorderKind;
   onClose: () => void;
-  onDone: (n: number) => void;
+  onDone: (n: number, kind: ReorderKind | null) => void;
 }) {
   const [settings, setSettings] = useState<Settings | null>(null),
     [products, setProducts] = useState<AdminProduct[]>([]),
@@ -68,6 +77,13 @@ export function ReorderEditor({
   const [pending, setPending] = useState<string | null>(() =>
     getPendingSubmission(`admin:${original.id}`),
   );
+  // Keep the original kind when recovering an unanswered request, even if the
+  // operator selected another kind when reopening this editor.
+  const pendingKind = pending
+    ? reorderKindSchema.safeParse(JSON.parse(pending).reorderKind)
+    : null;
+  const activeKind = pending ? (pendingKind?.data ?? null) : kind;
+  const kindLabel = activeKind ? reorderKindLabels[activeKind] : "재접수";
   const originalItems = new Set(
     original.deliveries.flatMap((d) => d.order_items.map((i) => i.product_id)),
   );
@@ -136,6 +152,7 @@ export function ReorderEditor({
         ? JSON.parse(saved)
         : {
             requestId: createRequestId(),
+            reorderKind: kind,
             order: { ...value, category: original.category },
           };
       savePendingSubmission(key, JSON.stringify(body));
@@ -145,7 +162,7 @@ export function ReorderEditor({
         body,
       );
       clearPendingSubmission(key);
-      onDone(result.orderNumber);
+      onDone(result.orderNumber, body.reorderKind ?? null);
     } catch (e) {
       if ((e as { status?: number }).status === 400) {
         clearPendingSubmission(`admin:${original.id}`);
@@ -159,12 +176,14 @@ export function ReorderEditor({
   return (
     <section className="mx-auto max-w-3xl pb-[calc(var(--order-action-height,0px)+1rem)] lg:max-w-4xl lg:[&_input[data-slot=input]]:h-9 lg:[&_input[data-slot=input]]:rounded-lg lg:[&_input[data-slot=input]]:text-sm">
       <h2 className="mb-4 text-xl font-semibold">
-        {original.order_number}번을 새 주문으로 재접수
+        {original.order_number}번 주문 · {kindLabel}
       </h2>
       <p className="mb-5 rounded-xl bg-secondary p-4 text-sm">
-        원본 주문은 취소되지 않습니다. 현재 상품·할인 가격이 적용됩니다. 판매
-        중지·삭제·품절 상품은 수량을 0으로 바꾸고 교체해주세요. 지난 예약일은
-        다시 선택해주세요.
+        {original.status === "cancelled"
+          ? "원본 주문은 취소 상태입니다."
+          : "원본 주문은 취소되지 않습니다."}{" "}
+        현재 상품·할인 가격이 적용됩니다. 판매 중지·삭제·품절 상품은 수량을
+        0으로 바꾸고 교체해주세요. 지난 예약일은 다시 선택해주세요.
       </p>
       {error && (
         <p role="alert" className="my-4 text-destructive">
@@ -172,6 +191,12 @@ export function ReorderEditor({
         </p>
       )}
       {busy && <p role="status">재접수 처리 중…</p>}
+      {pending && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          결과를 확인하지 못한 {kindLabel} 요청이 있습니다. 먼저 기존 요청의
+          결과를 확인해주세요.
+        </p>
+      )}
       {!loaded && (
         <div className="space-y-3">
           {loadError ? (

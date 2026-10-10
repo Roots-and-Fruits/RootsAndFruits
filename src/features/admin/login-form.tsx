@@ -1,11 +1,15 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useForm } from "react-hook-form";
 import { AdminButton as Button } from "./admin-button";
 import { AdminLabeledInput as LabeledInput } from "./admin-fields";
 import { adminRequest } from "./client";
+const subscribe = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
 export function LoginForm({ configured }: { configured: boolean }) {
+  const ready = useSyncExternalStore(subscribe, clientReady, serverReady);
   const router = useRouter();
   const { register, handleSubmit } = useForm<{
     username: string;
@@ -15,6 +19,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
   const [busy, setBusy] = useState(false);
   return (
     <form
+      method="post"
       className="mt-8 space-y-5"
       onSubmit={handleSubmit(async (value) => {
         setBusy(true);
@@ -39,6 +44,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
         label="아이디"
         id="username"
         autoComplete="username"
+        disabled={!ready || busy || !configured}
         required
         {...register("username")}
       />
@@ -47,6 +53,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
         id="password"
         type="password"
         autoComplete="current-password"
+        disabled={!ready || busy || !configured}
         required
         {...register("password")}
       />
@@ -55,7 +62,7 @@ export function LoginForm({ configured }: { configured: boolean }) {
           {error}
         </p>
       )}
-      <Button className="w-full h-12" disabled={busy || !configured}>
+      <Button className="w-full h-12" disabled={!ready || busy || !configured}>
         {busy ? "확인 중…" : "관리자 로그인"}
       </Button>
     </form>

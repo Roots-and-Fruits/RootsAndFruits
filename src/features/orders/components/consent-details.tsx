@@ -7,7 +7,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-// Legacy consent text, with order notification purpose added for SMS integration.
+// Legacy consent text, with order notification purpose added for order notifications.
 export function ConsentDetails({ marketing = false }: { marketing?: boolean }) {
   return (
     <Dialog>

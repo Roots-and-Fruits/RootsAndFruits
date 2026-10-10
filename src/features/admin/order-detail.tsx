@@ -8,6 +8,7 @@ import {
   stateLabel,
   type Checkout,
   type PaymentMethod,
+  type ReorderKind,
 } from "./schema";
 import { formatWon } from "@/features/orders/calculations";
 import { PaymentAction } from "./payment-action";
@@ -15,6 +16,7 @@ import { ReorderNotice } from "./order-notes";
 import { ReceiptLink } from "./receipt-link";
 import { summarizeOrderItems } from "./order-summary";
 import { TrackingNumbers } from "./tracking-numbers";
+import { ReorderAction } from "./reorder-action";
 export function OrderDetail({
   order: c,
   busy,
@@ -28,7 +30,10 @@ export function OrderDetail({
   busy: boolean;
   onAction: (action: string) => Promise<string | null>;
   onPay: (method: PaymentMethod) => Promise<string | null>;
-  onReorder: () => void;
+  onReorder: (
+    kind: ReorderKind,
+    cancelOriginal?: boolean,
+  ) => Promise<string | null>;
   onNote: (id: string, note: string) => void;
   canPrint?: boolean;
 }) {
@@ -89,9 +94,7 @@ export function OrderDetail({
             onConfirm={() => onAction("cancel")}
           />
         )}
-        <Button variant="outline" onClick={onReorder}>
-          주문 재접수
-        </Button>
+        <ReorderAction order={c} disabled={busy} onSelect={onReorder} />
       </div>
       {c.status !== "cancelled" && !beforeExport && (
         <p className="text-sm text-muted-foreground">
@@ -106,7 +109,7 @@ export function OrderDetail({
               배송지 {d.position} · {d.recipient.name}
             </h3>
             <p>{d.recipient.phone}</p>
-            <TrackingNumbers numbers={d.tracking_numbers} />
+            <TrackingNumbers numbers={d.tracking_numbers} linked />
             <p>
               ({d.recipient.postalCode}) {d.recipient.address}{" "}
               {d.recipient.addressDetail}
