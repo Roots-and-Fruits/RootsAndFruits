@@ -83,6 +83,11 @@ for (const kind of ["tablet", "kakao"] as const) {
     await expect(page).toHaveURL("http://127.0.0.1:3110/product");
     const session = await (await page.request.get("/api/auth/session")).json();
     expect(session.account.kind).toBe(kind);
+    const defaultSenderName =
+      kind === "kakao"
+        ? ((await (await page.request.get("/api/account/preferences")).json())
+            .sender?.name ?? "")
+        : "";
     await page.reload();
     expect(
       (await (await page.request.get("/api/auth/session")).json()).account.id,
@@ -101,7 +106,9 @@ for (const kind of ["tablet", "kakao"] as const) {
     await draftDialog
       .getByRole("button", { name: "처음부터", exact: true })
       .click();
-    await expect(page.getByLabel("보내는 분 이름")).toHaveValue("");
+    await expect(page.getByLabel("보내는 분 이름")).toHaveValue(
+      defaultSenderName,
+    );
     expect(
       (await (await page.request.get("/api/auth/session")).json()).account.id,
     ).toBe(session.account.id);
@@ -147,10 +154,20 @@ for (const kind of ["tablet", "kakao"] as const) {
       await admin.close();
     }
     await page.goto("/login");
-    await expect(page.getByRole("status")).toContainText("로그인되어 있어요");
-    await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+    await expect(page).toHaveURL(
+      kind === "kakao" ? /\/account\/orders$/ : /\/$/,
+    );
     await expect(
-      page.getByRole("button", { name: "카카오 로그인", exact: true }),
+      page
+        .getByRole("banner")
+        .getByRole("link", { name: "로그인", exact: true }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(
+      page
+        .getByRole("banner")
+        .getByRole("link", { name: "로그인", exact: true }),
     ).toBeVisible();
     expect((await post(page, "/api/orders", request)).status).toBe(401);
   });

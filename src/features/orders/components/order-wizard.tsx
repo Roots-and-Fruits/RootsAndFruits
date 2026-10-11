@@ -31,6 +31,11 @@ import { OrderEdit } from "./order-edit";
 import { getPendingSubmission } from "../submission-storage";
 import { SubmitOrder } from "./submit-order";
 import { OrderReview } from "./order-review";
+import { CustomerLoading } from "@/components/site/customer-loading";
+import { useCustomerSession } from "@/features/auth/session-provider";
+import { useAccountData } from "@/features/account/client";
+import type { Preferences } from "@/features/account/schema";
+import { AddressBookTools } from "@/features/account/address-book";
 
 import {
   createDraftStore,
@@ -103,6 +108,34 @@ export function OrderWizard({
     store.getSnapshot,
     store.getServerSnapshot,
   );
+  const session = useCustomerSession();
+  const preferences = useAccountData<Preferences>(
+    "preferences",
+    true,
+    !preview && !session.loading && session.account?.kind === "kakao",
+  );
+  const initialized = useRef<number | null>(null);
+  useEffect(() => {
+    if (
+      !snapshot ||
+      (!preview && session.loading) ||
+      preferences.loading ||
+      initialized.current === snapshot.revision
+    )
+      return;
+    initialized.current = snapshot.revision;
+    if (!preview && preferences.data?.sender) {
+      store.initializeSender(preferences.data.sender);
+      initialized.current = store.getSnapshot()?.revision ?? null;
+    }
+  }, [
+    snapshot,
+    session.loading,
+    preferences.loading,
+    preferences.data,
+    preview,
+    store,
+  ]);
   const pendingSubmission = useSyncExternalStore(
     subscribeSubmission,
     () => {
@@ -131,12 +164,8 @@ export function OrderWizard({
         />
       </section>
     );
-  if (!snapshot)
-    return (
-      <p className="px-5 py-8 text-sm text-muted-foreground" role="status">
-        작성 내용을 확인하고 있어요.
-      </p>
-    );
+  if (!snapshot || (!preview && session.loading) || preferences.loading)
+    return <CustomerLoading />;
   // Persisted input can outlive the catalog. Preserve it without rendering a broken total
   // or silently dropping products; catalog replacement policy is a separate decision.
   let canRestore = !(
@@ -197,6 +226,7 @@ export function OrderWizard({
         preview,
         store,
         snapshot,
+        preferences,
       }}
     />
   );
@@ -211,6 +241,7 @@ function OrderWizardContent({
   bundleDiscount,
   store,
   snapshot,
+  preferences,
 }: {
   category: CatalogCategory;
   products: Product[];
@@ -222,7 +253,9 @@ function OrderWizardContent({
   snapshot: NonNullable<
     ReturnType<ReturnType<typeof createDraftStore>["getSnapshot"]>
   >;
+  preferences: ReturnType<typeof useAccountData<Preferences>>;
 }) {
+  const [addressRevision, setAddressRevision] = useState(0);
   const {
     sender,
     deliveries,
@@ -456,7 +489,35 @@ function OrderWizardContent({
                 : headings[step].description}
             </p>
           </div>
-          <div key={`${step}-${activeIndex}-${resetKey}`}>
+          {preferences.error && (
+            <div className="mb-5 rounded-xl border p-3 text-sm">
+              <p role="alert">
+                저장된 회원 정보를 불러오지 못했어요. 직접 입력해서 주문할 수
+                있어요.
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={preferences.reload}
+              >
+                회원 정보 다시 불러오기
+              </Button>
+            </div>
+          )}
+          {preferences.data && (step === "recipient" || step === "address") && (
+            <AddressBookTools
+              addresses={preferences.data.addresses}
+              recipient={delivery.recipient}
+              save={step === "address"}
+              onSaved={preferences.reload}
+              onSelect={(recipient) => {
+                updateDelivery({ recipient });
+                setAddressRevision((n) => n + 1);
+              }}
+            />
+          )}
+          <div key={`${step}-${activeIndex}-${resetKey}-${addressRevision}`}>
             {step === "sender" && (
               <SenderStep
                 value={sender}
@@ -573,6 +634,14 @@ function OrderWizardContent({
                 maxDays={maxDeliveryDays}
                 preview={preview}
                 initialSection={editSection}
+                addressBook={
+                  preferences.data
+                    ? {
+                        addresses: preferences.data.addresses,
+                        reload: preferences.reload,
+                      }
+                    : undefined
+                }
                 onSave={(value) => {
                   store.update("editDraft", null);
                   setSender(value.sender);

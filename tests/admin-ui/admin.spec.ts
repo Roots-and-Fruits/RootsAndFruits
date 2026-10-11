@@ -492,6 +492,10 @@ test("customer submission retry after lost response retains one number and clear
   ).toBeVisible();
   await page.getByRole("link", { name: "나무와열매 홈" }).click();
   await page.locator('a[href="/order/start/product"]').click();
+  await page
+    .getByRole("dialog", { name: "로그인하고 더 편하게 주문하세요" })
+    .getByRole("button", { name: "비회원으로 계속하기" })
+    .click();
   await expect(
     page.getByRole("heading", { name: "접수 결과를 확인해주세요." }),
   ).toBeVisible();

@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getAccount } from "@/features/auth/server";
 import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
 import { LoginPanel } from "@/features/auth/login-panel";
@@ -10,6 +12,15 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string; error?: string }>;
 }) {
   const params = await searchParams;
+  const account = await getAccount().catch(() => null);
+  if (account?.kind === "kakao" || account?.kind === "tablet")
+    redirect(
+      params.next
+        ? customerReturnPath(params.next)
+        : account.kind === "kakao"
+          ? "/account/orders"
+          : "/",
+    );
   return (
     <>
       <SiteHeader />

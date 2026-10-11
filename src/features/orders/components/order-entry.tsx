@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CategoryBadge } from "@/features/catalog/category-badge";
+import { CustomerLoading } from "@/components/site/customer-loading";
 import { type CatalogCategory } from "@/features/catalog/types";
 import {
   clearOrderDraft,
@@ -20,8 +20,24 @@ import {
   hasOrderDraft,
 } from "../draft-storage";
 import { getPendingSubmission } from "../submission-storage";
+import { OrderLoginGate } from "@/features/auth/order-login-gate";
 
 export function OrderEntry({
+  category,
+  preview,
+}: {
+  category: CatalogCategory;
+  preview: boolean;
+}) {
+  const entry = <DraftEntry category={category} preview={preview} />;
+  return preview ? (
+    entry
+  ) : (
+    <OrderLoginGate next={`/${category}`}>{entry}</OrderLoginGate>
+  );
+}
+
+function DraftEntry({
   category,
   preview,
 }: {
@@ -68,11 +84,8 @@ export function OrderEntry({
   }
 
   return (
-    <section className="mx-auto max-w-xl space-y-4 px-5 py-12">
-      <CategoryBadge category={category} />
-      <p role="status" className="text-sm text-muted-foreground">
-        작성 중인 주문을 확인하고 있어요.
-      </p>
+    <section>
+      <CustomerLoading />
       <Dialog
         open={needsChoice && !pending}
         onOpenChange={(open) => {

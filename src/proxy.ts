@@ -5,7 +5,15 @@ import { adminTimingLabel, createAdminTiming } from "@/lib/admin-timing";
 export async function proxy(request: NextRequest) {
   const config = getSupabaseConfig();
   let response = NextResponse.next({ request });
-  if (!config) return response;
+  // Logout must not inherit a refreshed Set-Cookie from proxy. The route clears
+  // both the session and any stale chunks after Supabase signOut succeeds.
+  if (
+    !config ||
+    ["/api/auth/logout", "/api/account/membership"].includes(
+      request.nextUrl.pathname,
+    )
+  )
+    return response;
   const client = createServerClient(config.url, config.publishableKey, {
     cookies: {
       getAll: () => request.cookies.getAll(),
@@ -45,6 +53,7 @@ export const config = {
     "/namu-admin/:path*",
     "/api/:path*",
     "/auth/:path*",
+    "/account/:path*",
     "/login",
     "/tablet-login",
     "/product",

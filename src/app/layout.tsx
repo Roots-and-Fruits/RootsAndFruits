@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import shareCard from "../../public/brand/share-card.png";
 import "./globals.css";
+import { SessionProvider } from "@/features/auth/session-provider";
+import { CustomerBoundary } from "@/features/auth/customer-boundary";
 
 const siteTitle = "나무와열매 | TREE & BERRY FARM";
 const siteDescription =
@@ -48,7 +50,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         >
           본문으로 건너뛰기
         </a>
-        {children}
+        <SessionProvider>
+          <CustomerBoundary>{children}</CustomerBoundary>
+        </SessionProvider>
       </body>
     </html>
   );

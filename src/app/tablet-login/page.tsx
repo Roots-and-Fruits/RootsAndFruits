@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getAccount } from "@/features/auth/server";
 import { SiteHeader } from "@/components/site/site-header";
 import { LoginPanel } from "@/features/auth/login-panel";
 import { customerReturnPath } from "@/features/auth/redirect";
@@ -13,6 +15,15 @@ export default async function TabletLogin({
   searchParams: Promise<{ next?: string }>;
 }) {
   const params = await searchParams;
+  const account = await getAccount().catch(() => null);
+  if (account?.kind === "kakao" || account?.kind === "tablet")
+    redirect(
+      params.next
+        ? customerReturnPath(params.next)
+        : account.kind === "kakao"
+          ? "/account/orders"
+          : "/",
+    );
   return (
     <>
       <SiteHeader />

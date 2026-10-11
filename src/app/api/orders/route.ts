@@ -1,12 +1,13 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { submitSchema } from "@/features/admin/schema";
 import { readBody, apiError, checkDb } from "@/features/admin/http";
-import { getAccount } from "@/features/auth/server";
+import { getAccount, assertCustomerEpoch } from "@/features/auth/server";
 import { scheduleNotifications } from "@/features/notifications/server";
 export const maxDuration = 60;
 export async function POST(request: Request) {
   try {
     const value = submitSchema.parse(await readBody(request));
+    await assertCustomerEpoch(request);
     const account = await getAccount();
     const db = createServiceClient();
     const { data, error } = await db.rpc("submit_customer_checkout", {

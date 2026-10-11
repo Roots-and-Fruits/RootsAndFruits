@@ -10,7 +10,7 @@ const root = process.cwd(),
   db = new PGlite(),
   staff = "00000000-0000-4000-8000-000000000001";
 await db.exec(
-  `create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text);create table auth.identities(user_id uuid references auth.users(id),provider text);create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;insert into auth.users(id) values('${staff}');`,
+  `create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text);create table auth.identities(user_id uuid references auth.users(id) on delete cascade,provider text);create function auth.uid() returns uuid language sql as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;insert into auth.users(id) values('${staff}');`,
 );
 for (const file of [
   "202609200001_catalog.sql",
@@ -27,6 +27,9 @@ for (const file of [
   "202610070001_sender_only_notifications.sql",
   "202610100001_aligo_only_notifications.sql",
   "202610110001_reorder_kind.sql",
+  "202610110002_customer_account.sql",
+  "202610110003_notification_recipient_phone.sql",
+  "202610110004_customer_deletion.sql",
 ])
   await db.exec(
     await readFile(join(root, "supabase/migrations", file), "utf8"),
@@ -40,13 +43,14 @@ await db.exec(
 );
 const tabletId = "00000000-0000-4000-8000-000000000002";
 const kakaoId = "00000000-0000-4000-8000-000000000003";
+const secondKakaoId = "00000000-0000-4000-8000-000000000004";
 await db.query(
-  "insert into auth.users(id,email) values($1,'tablet-01@tablet.roots-and-fruits.invalid'),($2,null)",
-  [tabletId, kakaoId],
+  "insert into auth.users(id,email) values($1,'tablet-01@tablet.roots-and-fruits.invalid'),($2,null),($3,null)",
+  [tabletId, kakaoId, secondKakaoId],
 );
 await db.query(
-  "insert into auth.identities(user_id,provider) values($1,'kakao')",
-  [kakaoId],
+  "insert into auth.identities(user_id,provider) values($1,'kakao'),($2,'kakao')",
+  [kakaoId, secondKakaoId],
 );
 await db.query(
   "select provision_tablet($1,'tablet-01','tablet-01@tablet.roots-and-fruits.invalid')",
@@ -60,6 +64,7 @@ const users = [
     provider: "email",
   },
   { id: kakaoId, provider: "kakao" },
+  { id: secondKakaoId, provider: "kakao" },
 ].map((u) => ({
   ...u,
   aud: "authenticated",
@@ -125,6 +130,9 @@ function sessionFor(user, mode = "normal") {
   };
 }
 const oauthCodes = new Map();
+const deletedUsers = new Set();
+const unlinked = new Set();
+const deletionFailures = new Set();
 const publicKey = "test-publishable-key",
   serviceKey = "test-service-key";
 function send(res, data, status = 200, headers = {}) {
@@ -136,7 +144,10 @@ const server = createServer(async (req, res) => {
   const auth = req.headers.authorization?.slice(7);
   const issued = issuedTokens.get(auth);
   const user =
-    issued && issued.exp > Date.now() / 1000 && issued.mode !== "revoked"
+    issued &&
+    issued.exp > Date.now() / 1000 &&
+    issued.mode !== "revoked" &&
+    !deletedUsers.has(issued.user.id)
       ? issued.user
       : undefined;
   let body = {};
@@ -145,6 +156,46 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) raw += chunk;
     if (raw) body = JSON.parse(raw);
     // Local test fixtures only; this server never loads real Supabase settings.
+    if (url.pathname === "/__test/customer-deletion-fixture") {
+      const id = randomUUID(),
+        providerId = String(100000 + users.length);
+      const fixture = {
+        ...users[2],
+        id,
+        identities: [
+          {
+            id: providerId,
+            provider: "kakao",
+            identity_data: { sub: providerId },
+          },
+        ],
+      };
+      users.push(fixture);
+      await db.query("insert into auth.users(id) values($1)", [id]);
+      await db.query("insert into auth.identities values($1,'kakao')", [id]);
+      if (body.failDeleteOnce) deletionFailures.add(id);
+      return send(res, sessionFor(fixture));
+    }
+    if (url.pathname === "/__test/kakao-unlink") {
+      if (body.authorization !== "KakaoAK isolated-kakao-key")
+        return send(res, { code: -401 }, 401);
+      if (unlinked.has(body.id)) return send(res, { code: -101 }, 400);
+      unlinked.add(body.id);
+      return send(res, { id: Number(body.id) });
+    }
+    if (url.pathname.startsWith("/auth/v1/admin/users/")) {
+      if (auth !== serviceKey) return send(res, {}, 403);
+      const id = url.pathname.split("/").at(-1);
+      const target = users.find((u) => u.id === id && !deletedUsers.has(id));
+      if (!target) return send(res, { msg: "missing user" }, 404);
+      if (req.method === "DELETE") {
+        if (deletionFailures.delete(id))
+          return send(res, { msg: "temporary test failure" }, 500);
+        await db.query("delete from auth.users where id=$1", [id]);
+        deletedUsers.add(id);
+      }
+      return send(res, { user: target });
+    }
     if (url.pathname === "/__test/shipping-fixture" && req.method === "POST") {
       // Isolated PGlite only. No production credentials are loaded by this server.
       const count = body.count ?? 120;
@@ -211,7 +262,10 @@ const server = createServer(async (req, res) => {
     if (url.pathname === "/__test/auth-session")
       return send(
         res,
-        sessionFor(users[0], url.searchParams.get("mode") || "normal"),
+        sessionFor(
+          users[Number(url.searchParams.get("user") || "0")],
+          url.searchParams.get("mode") || "normal",
+        ),
       );
     if (url.pathname === "/__test/auth-reads")
       return send(res, { count: authReads.get(auth) || 0 });
@@ -272,6 +326,13 @@ const server = createServer(async (req, res) => {
         return send(res, { message: "forbidden", code: "42501" }, 403);
       const allowed = [
         "staff_email",
+        "customer_preferences",
+        "customer_deletion_ready",
+        "save_customer_sender",
+        "save_customer_address",
+        "delete_customer_address",
+        "list_customer_orders",
+        "get_customer_order",
         "list_checkouts",
         "list_shipping_work",
         "preview_delivery_tracking",
@@ -405,6 +466,24 @@ await writeFile(
   join(dir, "next.config.ts"),
   "export default {devIndicators:false};\n",
 );
+// Intercept Kakao only inside this isolated child process; no real request or key.
+const mockFetch = join(dir, "mock-kakao.cjs");
+await writeFile(
+  mockFetch,
+  `
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  if (String(url) === "https://kapi.kakao.com/v1/user/unlink") {
+    const form = new URLSearchParams(String(init.body));
+    return realFetch("http://127.0.0.1:3111/__test/kakao-unlink", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: form.get("target_id"), authorization: new Headers(init.headers).get("authorization") })
+    });
+  }
+  return realFetch(url, init);
+};
+`,
+);
 const next = spawn(
   process.execPath,
   [
@@ -427,6 +506,8 @@ const next = spawn(
       NEXT_TELEMETRY_DISABLED: "1",
       ENABLE_ORDER_PREVIEW: "true",
       ALIGO_ENABLED: "false",
+      KAKAO_ADMIN_KEY: "isolated-kakao-key",
+      NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --require=${mockFetch}`,
     },
     stdio: "inherit",
   },

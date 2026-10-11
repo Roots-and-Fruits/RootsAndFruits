@@ -7,6 +7,7 @@ create table private.staff (
   username text not null unique check (username ~ '^[a-zA-Z0-9_-]{3,40}$'),
   email text not null unique
 );
+alter table private.staff enable row level security;
 create function public.is_staff() returns boolean language sql stable security definer set search_path = '' as $$
   select exists(select 1 from private.staff where user_id = auth.uid());
 $$;

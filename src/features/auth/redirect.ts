@@ -1,6 +1,20 @@
 // Only known customer entry points may be used after authentication.
 export function customerReturnPath(value: unknown) {
-  return value === "/product" || value === "/experience" ? value : "/";
+  return typeof value === "string" &&
+    ([
+      "/product",
+      "/experience",
+      "/account",
+      "/account/orders",
+      "/account/addresses",
+      "/account/sender",
+      "/account/settings",
+    ].includes(value) ||
+      /^\/account\/orders\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        value,
+      ))
+    ? value
+    : "/";
 }
 export const customerSessionCookie = "rf-customer-session";
 

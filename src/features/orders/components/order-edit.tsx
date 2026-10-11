@@ -32,6 +32,8 @@ import { RecipientFields } from "./recipient-step";
 import { AddressFields } from "./address-step";
 import { ProductStep } from "./product-step";
 import { DeliveryDateStep } from "./delivery-date-step";
+import { AddressBookTools } from "@/features/account/address-book";
+import type { SavedAddress } from "@/features/account/schema";
 
 function editSchema(today: string, maxDays: number) {
   return z.object({
@@ -87,6 +89,7 @@ export function OrderEdit({
   onCancel,
   submitLabel = "수정 완료",
   allowDeliveryChanges = false,
+  addressBook,
 }: {
   sender: Sender;
   deliveries: DeliveryDraft[];
@@ -102,6 +105,7 @@ export function OrderEdit({
   onCancel: () => void;
   submitLabel?: string;
   allowDeliveryChanges?: boolean;
+  addressBook?: { addresses: SavedAddress[]; reload: () => void };
 }) {
   const form = useForm<EditValues>({
     resolver: zodResolver(editSchema(today, maxDays)),
@@ -184,6 +188,20 @@ export function OrderEdit({
                 >
                   이 배송지 제거
                 </Button>
+              )}
+              {addressBook && (
+                <AddressBookTools
+                  addresses={addressBook.addresses}
+                  recipient={delivery.recipient}
+                  save
+                  onSaved={addressBook.reload}
+                  onSelect={(recipient) =>
+                    form.setValue(`deliveries.${index}.recipient`, recipient, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                />
               )}
               <RecipientFields
                 sender={values.sender}

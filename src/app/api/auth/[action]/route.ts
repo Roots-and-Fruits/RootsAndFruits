@@ -1,14 +1,13 @@
-import { cookies } from "next/headers";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { readBody, apiError, HttpError } from "@/features/admin/http";
-import { getAccount, markCustomerSession } from "@/features/auth/server";
 import {
-  requestOrigin,
-  customerReturnPath,
-  customerSessionCookie,
-} from "@/features/auth/redirect";
+  getAccount,
+  markCustomerSession,
+  clearCustomerSession,
+} from "@/features/auth/server";
+import { requestOrigin, customerReturnPath } from "@/features/auth/redirect";
 type Context = { params: Promise<{ action: string }> };
 export async function GET(_request: Request, { params }: Context) {
   try {
@@ -87,7 +86,7 @@ export async function POST(request: Request, { params }: Context) {
       const { error } = await client.auth.signOut({ scope: "local" });
       if (error)
         throw new HttpError("로그아웃하지 못했어요. 다시 시도해주세요.", 503);
-      (await cookies()).delete(customerSessionCookie);
+      await clearCustomerSession(request);
       return Response.json({ ok: true });
     }
     throw new HttpError("찾을 수 없는 요청입니다.", 404);

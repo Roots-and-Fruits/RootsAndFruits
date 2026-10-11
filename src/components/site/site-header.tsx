@@ -3,6 +3,7 @@ import Image from "next/image";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OrderGuideDialog } from "./order-guide-dialog";
+import { SessionLink } from "@/features/auth/session-link";
 
 export function SiteHeader({ compact = false }: { compact?: boolean }) {
   return (
@@ -32,17 +33,20 @@ export function SiteHeader({ compact = false }: { compact?: boolean }) {
           </span>
         </span>
       </Link>
-      {compact ? (
-        <OrderGuideDialog />
-      ) : (
-        <Link
-          href="/guide"
-          className="flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
-        >
-          주문 안내
-          <ArrowUpRight className="size-4" aria-hidden="true" />
-        </Link>
-      )}
+      <div className="flex items-center gap-3 sm:gap-5">
+        <SessionLink compact />
+        {compact ? (
+          <OrderGuideDialog />
+        ) : (
+          <Link
+            href="/guide"
+            className="flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
+          >
+            주문 안내
+            <ArrowUpRight className="size-4" aria-hidden="true" />
+          </Link>
+        )}
+      </div>
     </header>
   );
 }

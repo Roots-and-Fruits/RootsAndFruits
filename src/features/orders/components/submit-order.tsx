@@ -1,7 +1,11 @@
 "use client";
 import { createRequestId } from "@/lib/request-id";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import {
+  customerEpoch,
+  isCurrentCustomerEpoch,
+} from "@/features/auth/session-version";
 import { Button } from "@/components/ui/button";
 import type { CatalogCategory } from "@/features/catalog/types";
 import type { Sender, DeliveryDraft } from "../schema";
@@ -23,10 +27,11 @@ export function SubmitOrder({
   deliveries: DeliveryDraft[];
 }) {
   const router = useRouter();
+  const epoch = useRef(customerEpoch()).current;
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function submit() {
-    if (busy) return;
+    if (busy || !isCurrentCustomerEpoch(epoch)) return;
     setBusy(true);
     setError("");
     try {
@@ -44,10 +49,14 @@ export function SubmitOrder({
       );
       const response = await fetch("/api/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Customer-Epoch": epoch,
+        },
         body: JSON.stringify(request),
       });
       const data = await response.json();
+      if (!isCurrentCustomerEpoch(epoch)) return;
       if (!response.ok) {
         if (response.status === 400 || response.status === 422)
           clearPendingSubmission(category);
@@ -71,6 +80,7 @@ export function SubmitOrder({
       router.replace("/order-complete");
       router.refresh();
     } catch (e) {
+      if (!isCurrentCustomerEpoch(epoch)) return;
       const pending = getPendingSubmission(category);
       if (pending) notifySubmission();
       const message =

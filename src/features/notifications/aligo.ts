@@ -86,6 +86,14 @@ export type AligoTemplates = Record<NotificationJob["event"], AligoTemplate>;
 const code = z
   .union([z.number().int(), z.string().regex(/^-?\d+$/)])
   .transform(String);
+const count = z.union([
+  z.number().int().nonnegative().safe(),
+  z
+    .string()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .pipe(z.number().int().nonnegative().safe()),
+]);
 const replySchema = z.object({
   code,
   info: z
@@ -96,8 +104,8 @@ const replySchema = z.object({
           z.number().int().nonnegative().safe().transform(String),
         ])
         .optional(),
-      scnt: z.coerce.number().int().nonnegative().optional(),
-      fcnt: z.coerce.number().int().nonnegative().optional(),
+      scnt: count.optional(),
+      fcnt: count.optional(),
     })
     .optional(),
 });
@@ -301,7 +309,13 @@ export function aligoProvider(
             providerId,
             errorCode: "ALIGO_INVALID_RECIPIENT",
           };
-        if (config.testMode && (!info || (info.scnt === 0 && info.fcnt === 0)))
+        // Test acknowledgements do not need a real-send ID. Accept omitted
+        // counters too, but keep explicit failures/conflicting counts separate.
+        if (
+          config.testMode &&
+          (info?.scnt === undefined || info.scnt <= 1) &&
+          (info?.fcnt === undefined || info.fcnt === 0)
+        )
           return { status: "tested", providerCode, providerId };
         if (providerId && info?.scnt === 1 && info.fcnt === 0)
           return {

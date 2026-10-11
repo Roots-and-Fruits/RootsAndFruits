@@ -30,6 +30,8 @@ export function notificationErrorText(code: string) {
     INVALID_PAYLOAD:
       "알림에 필요한 주문 정보가 부족합니다. 기존 발송 건인지 확인해주세요.",
     INVALID_PHONE: "알림을 받을 휴대폰 번호를 확인해주세요.",
+    INVALID_RESPONSE:
+      "알리고 응답을 확인하지 못했습니다. 테스트 모드 여부와 알리고 발송 내역을 확인해주세요. 중복 발송 방지를 위해 자동 재시도하지 않습니다.",
   };
   return messages[code] ?? `알림 연결·처리 결과를 확인해주세요. (${code})`;
 }

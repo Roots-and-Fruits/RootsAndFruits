@@ -3,16 +3,7 @@
 import { useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 import { useController } from "react-hook-form";
 import { LabeledInput } from "./labeled-input";
-
-// Preserve replacement text and invalid/overlong input for submit-time validation.
-function formatPhone(value: string) {
-  if (!/^[\d-]*$/.test(value)) return value;
-  const digits = value.replace(/-/g, "");
-  if (digits.length > 11) return value;
-  return [digits.slice(0, 3), digits.slice(3, 7), digits.slice(7)]
-    .filter(Boolean)
-    .join("-");
-}
+import { formatPhone } from "@/lib/phone";
 
 type Props = Omit<
   ComponentProps<typeof LabeledInput>,

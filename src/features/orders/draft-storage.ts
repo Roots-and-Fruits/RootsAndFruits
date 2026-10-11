@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { createEmptyDelivery, emptySender } from "./schema";
+import {
+  customerEpoch,
+  customerResetEvent,
+  isCurrentCustomerEpoch,
+} from "@/features/auth/session-version";
 
 // Draft validation checks structure only: incomplete and unnormalized input is intentional.
 const sender = z.object({
@@ -99,6 +104,7 @@ type Snapshot = {
   failed: boolean;
 };
 export function createDraftStore(key: string) {
+  const epoch = customerEpoch();
   let snapshot: Snapshot | null = null;
   const listeners = new Set<() => void>();
   const emit = () => listeners.forEach((listener) => listener());
@@ -107,7 +113,9 @@ export function createDraftStore(key: string) {
     let notice = "";
     let failed = false;
     try {
-      const raw = localStorage.getItem(key);
+      const raw = isCurrentCustomerEpoch(epoch)
+        ? localStorage.getItem(key)
+        : null;
       if (raw) {
         const parsed = draftSchema.safeParse(JSON.parse(raw));
         if (!parsed.success) throw new Error("Invalid draft");
@@ -145,6 +153,7 @@ export function createDraftStore(key: string) {
         window.addEventListener("storage", onStorage);
         window.addEventListener("pageshow", onPageShow);
         window.addEventListener(resetEvent, onReset);
+        window.addEventListener(customerResetEvent, restore);
       }
       return () => {
         listeners.delete(listener);
@@ -152,6 +161,7 @@ export function createDraftStore(key: string) {
           window.removeEventListener("storage", onStorage);
           window.removeEventListener("pageshow", onPageShow);
           window.removeEventListener(resetEvent, onReset);
+          window.removeEventListener(customerResetEvent, restore);
         }
       };
     },
@@ -159,7 +169,7 @@ export function createDraftStore(key: string) {
       field: K,
       value: OrderDraft[K] | ((current: OrderDraft[K]) => OrderDraft[K]),
     ) {
-      if (!snapshot) return;
+      if (!snapshot || !isCurrentCustomerEpoch(epoch)) return;
       const next =
         typeof value === "function" ? value(snapshot.draft[field]) : value;
       const draft = { ...snapshot.draft, [field]: next };
@@ -185,7 +195,7 @@ export function createDraftStore(key: string) {
       emit();
     },
     reset() {
-      if (!snapshot) return;
+      if (!snapshot || !isCurrentCustomerEpoch(epoch)) return;
       let failed = false;
       try {
         localStorage.removeItem(key);
@@ -200,6 +210,17 @@ export function createDraftStore(key: string) {
           ? "브라우저의 임시 저장 내용을 지우지 못했어요. 브라우저 설정에서 사이트 데이터를 삭제해주세요."
           : "",
       };
+      emit();
+    },
+    initializeSender(value: { name: string; phone: string }) {
+      if (
+        !snapshot ||
+        !isCurrentCustomerEpoch(epoch) ||
+        hasOrderDraft(snapshot.draft)
+      )
+        return;
+      this.update("sender", { ...emptySender, ...value });
+      snapshot = { ...snapshot, revision: snapshot.revision + 1 };
       emit();
     },
   };

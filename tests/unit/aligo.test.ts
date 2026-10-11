@@ -441,6 +441,66 @@ test("Aligo rejections are retryable but uncertain responses/timeouts never retr
   }
 });
 
+test("Aligo test acknowledgements do not require a real-send message ID", async () => {
+  const replies = [
+    { code: 0 },
+    { code: 0, info: {} },
+    { code: 0, info: { scnt: 0, fcnt: 0 } },
+    { code: 0, info: { scnt: 1, fcnt: 0 } },
+    { code: "0", info: { scnt: "1", fcnt: "0" } },
+  ];
+  for (const reply of replies) {
+    for (const testMode of [true, false]) {
+      let calls = 0;
+      const provider = aligoProvider(
+        { ...config, testMode },
+        { received, shipped },
+        async () => {
+          calls++;
+          return Response.json(reply);
+        },
+      );
+      const result = await provider.send(
+        receivedJob.phone,
+        provider.prepare(receivedJob),
+        receivedJob.id,
+      );
+      assert.equal(result.status, testMode ? "tested" : "unknown");
+      assert.equal(result.providerCode, "0");
+      assert.equal(result.providerId, undefined);
+      assert.equal(calls, 1);
+    }
+  }
+});
+
+test("Aligo test mode still distinguishes rejection from invalid or conflicting responses", async () => {
+  for (const [reply, expected] of [
+    [{ code: -99, message: config.apiKey }, "failed"],
+    [{ code: 0, info: { scnt: 0, fcnt: 1 } }, "failed"],
+    [{ code: 0, info: { scnt: 1, fcnt: 1 } }, "unknown"],
+    [{ code: 0, info: { scnt: 2, fcnt: 0 } }, "unknown"],
+    [{ code: 0, info: { scnt: null, fcnt: 0 } }, "unknown"],
+    [{ code: 0, info: { scnt: true, fcnt: false } }, "unknown"],
+    [{ code: 0, info: { scnt: "", fcnt: "" } }, "unknown"],
+    [{ code: 0, info: { scnt: "invalid" } }, "unknown"],
+    [{ message: "No result code" }, "unknown"],
+  ] as const) {
+    let calls = 0;
+    const provider = aligoProvider(config, { received, shipped }, async () => {
+      calls++;
+      return Response.json(reply);
+    });
+    const result = await provider.send(
+      receivedJob.phone,
+      provider.prepare(receivedJob),
+      receivedJob.id,
+    );
+    assert.equal(result.status, expected);
+    assert.equal(calls, 1);
+    assert.equal(JSON.stringify(result).includes(config.apiKey), false);
+  }
+});
+
 test("dispatch persists exact prepared content before send and does not send on snapshot/provider mismatch", async () => {
   const steps: string[] = [];
   const provider = aligoProvider(config, { received, shipped }, async () => {

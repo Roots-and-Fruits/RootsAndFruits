@@ -60,6 +60,7 @@ async function setup(
     "202610070001_sender_only_notifications.sql",
     "202610100001_aligo_only_notifications.sql",
     "202610110001_reorder_kind.sql",
+    "202610110002_customer_account.sql",
     "202610110003_notification_recipient_phone.sql",
   ])
     if (
