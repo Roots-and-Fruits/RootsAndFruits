@@ -21,7 +21,7 @@ test("completion bank details, countdown, manual navigation and receipt cleanup"
     const bank = page.getByRole("region", { name: "계좌송금 안내" });
     await expect(bank).toContainText("농협");
     await expect(bank).toContainText("2180-2180-2180-9");
-    await expect(bank).toContainText("제주체험종장");
+    await expect(bank).toContainText("제주체험농장");
     await expect(page.getByRole("timer")).toContainText("60초");
     if (category === "product") {
       await page.screenshot({
