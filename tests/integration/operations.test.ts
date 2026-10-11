@@ -39,6 +39,7 @@ async function setup(
   includePaymentMigration = true,
   includeCancellationMigration = includePaymentMigration,
   includeAligoOnlyMigration = true,
+  includeRecipientPhoneMigration = true,
 ) {
   const db = new PGlite();
   await db.exec(
@@ -59,6 +60,7 @@ async function setup(
     "202610070001_sender_only_notifications.sql",
     "202610100001_aligo_only_notifications.sql",
     "202610110001_reorder_kind.sql",
+    "202610110003_notification_recipient_phone.sql",
   ])
     if (
       (includeExperienceMigration ||
@@ -67,7 +69,9 @@ async function setup(
       (includeCancellationMigration ||
         f !== "202610030002_cancel_before_export.sql") &&
       (includeAligoOnlyMigration ||
-        f !== "202610100001_aligo_only_notifications.sql")
+        f !== "202610100001_aligo_only_notifications.sql") &&
+      (includeRecipientPhoneMigration ||
+        f !== "202610110003_notification_recipient_phone.sql")
     )
       await db.exec(await readFile(`supabase/migrations/${f}`, "utf8"));
   await db.query("select public.provision_staff(1::smallint,$1,$2,$3)", [
@@ -435,6 +439,84 @@ test("Postgres: Aligo-only migration retires SMS work without resending history 
     } finally {
       await db.close();
     }
+  }
+});
+
+test("Postgres: receipt phone migration preserves history and snapshots phones for new orders", async () => {
+  const db = await setup(true, true, true, true, false);
+  try {
+    await db.query(
+      "select configure_notification_delivery(true,'aligo',true,$1)",
+      [staff],
+    );
+    const orderPayload = payload([
+      {
+        ...delivery([{ productId: p2, quantity: 1 }]),
+        recipient: { ...recipient, name: "첫째", phone: "01055556666" },
+      },
+      {
+        ...delivery([{ productId: p2, quantity: 2 }]),
+        recipient: { ...recipient, name: "둘째", phone: "01077778888" },
+      },
+    ]);
+    const submit = () =>
+      db.query("select submit_checkout($1,$2::jsonb)", [
+        crypto.randomUUID(),
+        JSON.stringify(orderPayload),
+      ]);
+    await submit();
+    const snapshot = async () => ({
+      notices: (
+        await db.query<NotificationJob>(
+          "select * from order_notifications order by id",
+        )
+      ).rows,
+      orders: (await db.query("select * from checkouts order by id")).rows,
+      deliveries: (await db.query("select * from deliveries order by id")).rows,
+      settings: (await db.query("select * from notification_settings")).rows,
+    });
+    const before = await snapshot();
+    assert.doesNotMatch(aligoVariables(before.notices[0]).배송지정보, /010/);
+    const migration = await readFile(
+      "supabase/migrations/202610110003_notification_recipient_phone.sql",
+      "utf8",
+    );
+    await db.exec(migration);
+    assert.deepEqual(await snapshot(), before);
+    await db.exec(migration);
+    assert.deepEqual(await snapshot(), before);
+    for (const role of ["anon", "authenticated"]) {
+      await db.exec(`set role ${role}`);
+      await assert.rejects(
+        db.query("select private.notification_delivery($1)", [
+          crypto.randomUUID(),
+        ]),
+        /permission denied/,
+      );
+      await db.exec("reset role");
+    }
+    await submit();
+    const after = await snapshot();
+    assert.equal(after.notices.length, 2);
+    assert.deepEqual(
+      after.notices.find((n) => n.id === before.notices[0].id),
+      before.notices[0],
+    );
+    const next = after.notices.find((n) => n.id !== before.notices[0].id)!;
+    assert.equal(next.event, "received");
+    assert.equal(next.phone, sender.phone);
+    assert.equal(next.recipient_role, "sender");
+    assert.match(
+      aligoVariables(next).배송지정보,
+      /1\. 첫째님 \(010-5555-6666\)\n주소:/,
+    );
+    assert.match(
+      aligoVariables(next).배송지정보,
+      /2\. 둘째님 \(010-7777-8888\)\n주소:/,
+    );
+    assert.deepEqual(after.settings, before.settings);
+  } finally {
+    await db.close();
   }
 });
 

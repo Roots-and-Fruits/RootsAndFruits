@@ -38,6 +38,11 @@ const category = z.enum(["product", "experience"]);
 const delivery = z.object({
   position: z.number().int().positive(),
   recipientName: z.string().min(1),
+  // Older queued notifications did not include this snapshot field.
+  recipientPhone: z
+    .string()
+    .regex(/^\d{11}$/)
+    .optional(),
   address: z.string().min(1),
   addressDetail: z.string(),
   items,
@@ -70,7 +75,7 @@ export function aligoVariables(job: NotificationJob): Record<string, string> {
         .sort((a, b) => a.position - b.position)
         .map(
           (d) =>
-            `${d.position}. ${line(d.recipientName)}님\n주소: ${[line(d.address), line(d.addressDetail)].filter(Boolean).join(" ")}\n상품: ${itemText(d.items, value.category)}`,
+            `${d.position}. ${line(d.recipientName)}님${d.recipientPhone ? ` (${d.recipientPhone.replace(/^(\d{3})(\d{4})(\d{4})$/, "$1-$2-$3")})` : ""}\n주소: ${[line(d.address), line(d.addressDetail)].filter(Boolean).join(" ")}\n상품: ${itemText(d.items, value.category)}`,
         )
         .join("\n\n"),
     };

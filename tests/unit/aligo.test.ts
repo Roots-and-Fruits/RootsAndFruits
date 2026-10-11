@@ -69,6 +69,7 @@ const receivedJob: NotificationJob = {
       {
         position: 2,
         recipientName: "둘째",
+        recipientPhone: "01055556666",
         address: "가상 주소2",
         addressDetail: "102호",
         items: [{ ...item, quantity: 1 }],
@@ -76,6 +77,7 @@ const receivedJob: NotificationJob = {
       {
         position: 1,
         recipientName: "첫째",
+        recipientPhone: "01012345678",
         address: "가상 주소1",
         addressDetail: "101호",
         items: [item],
@@ -138,12 +140,12 @@ test("Aligo config requires its own gate, defaults to test mode and ignores reti
   );
 });
 
-test("registered templates keep wording/newlines/buttons, substitute snapshots, and exclude phone numbers", () => {
+test("registered templates preserve wording and include each recipient phone in delivery information", () => {
   const prepared = prepareAligo(receivedJob, received);
   assert.match(prepared.text, /123번\r\n■ 배송지: 2곳\r\n■ 주문금액: 14,000원/);
   assert.match(
     prepared.text,
-    /1\. 첫째님\n주소: 가상 주소1 101호\n상품: 체험귤 × 2\n\n2\. 둘째님/,
+    /1\. 첫째님 \(010-1234-5678\)\n주소: 가상 주소1 101호\n상품: 체험귤 × 2\n\n2\. 둘째님 \(010-5555-6666\)/,
   );
   assert.doesNotMatch(prepared.text, /택배 1kg|01033334444|#\{/);
   assert.equal(prepared.emphasisTitle, received.templtTitle);
@@ -156,6 +158,7 @@ test("registered templates keep wording/newlines/buttons, substitute snapshots, 
     /^보내는분님이 받는분님께 보내시는 상품이 발송되었습니다./,
   );
   assert.match(shipping.text, /발송상품: 체험귤 × 2/);
+  assert.doesNotMatch(shipping.text, /010/);
   assert.deepEqual(
     aligoVariables({
       ...shippedJob,
@@ -192,6 +195,34 @@ test("registered templates keep wording/newlines/buttons, substitute snapshots, 
       },
       received,
     ),
+  );
+});
+
+test("older receipt snapshots without recipient phones keep their original display", () => {
+  const legacy = JSON.parse(JSON.stringify(receivedJob)) as NotificationJob;
+  const value = legacy.payload as { deliveries: { recipientPhone?: string }[] };
+  for (const delivery of value.deliveries) delete delivery.recipientPhone;
+  const message = prepareAligo(legacy, received);
+  assert.match(message.text, /1\. 첫째님\n주소:/);
+  assert.match(message.text, /2\. 둘째님\n주소:/);
+  assert.doesNotMatch(message.text, /010|undefined|null|\(\)/);
+});
+
+test("receipt phone additions still respect the complete message length limit", () => {
+  const variables = aligoVariables(receivedJob);
+  const exact = {
+    ...received,
+    templtContent:
+      "가".repeat(1000 - variables.배송지정보.length) + "#{배송지정보}",
+  };
+  assert.equal(prepareAligo(receivedJob, exact).text.length, 1000);
+  assert.throws(
+    () =>
+      prepareAligo(receivedJob, {
+        ...exact,
+        templtContent: "가" + exact.templtContent,
+      }),
+    /MESSAGE_TOO_LONG/,
   );
 });
 
