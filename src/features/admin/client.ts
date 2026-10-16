@@ -1,3 +1,5 @@
+import { synchronizeCustomerSession } from "@/features/auth/customer-cleanup";
+
 export async function adminRequest<T>(
   path: string,
   body?: unknown,
@@ -17,5 +19,6 @@ export async function adminRequest<T>(
       new Error(data.error || "요청을 처리하지 못했습니다."),
       { status: response.status },
     );
+  if (path === "login" || path === "logout") synchronizeCustomerSession();
   return data;
 }

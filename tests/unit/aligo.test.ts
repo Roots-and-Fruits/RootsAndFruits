@@ -23,6 +23,7 @@ const config: AligoConfig = {
   from: "01011112222",
   orderTemplate: "UM_0746",
   shippingTemplate: "UM_0737",
+  shippingTrackingTemplate: "UM_3439",
   testMode: true,
 };
 const received: AligoTemplate = {
@@ -51,6 +52,13 @@ const shipped: AligoTemplate = {
   templtTitle: "상품이 발송되었습니다.",
   templtContent:
     "#{보내는분}님이 #{받는분}님께 보내시는 상품이 발송되었습니다.\n\n■ 보내는 분: #{보내는분}님\n■ 받는 분: #{받는분}님\n■ 발송상품: #{발송상품}\n\n실제 도착일은 택배사 배송 상황에 따라 달라질 수 있습니다.\n\n감사합니다.",
+};
+const shippedTracking: AligoTemplate = {
+  ...shipped,
+  templtCode: "UM_3439",
+  templtName: "상품발송_송장",
+  templtContent:
+    "#{보내는분}님이 #{받는분}님께 보내시는 상품이 발송되었습니다. ■ 발송상품: #{발송상품} ■ 택배사: #{택배회사명} ■ 운송장번호: #{송장번호}",
 };
 const item = { label: "택배 1kg · 체험귤", weightGrams: 1000, quantity: 2 };
 const receivedJob: NotificationJob = {
@@ -238,7 +246,7 @@ test("template lookup uses authenticated POST without sending and live mode requ
     assert.equal(body.has("tpl_code"), false);
     return Response.json({
       code: 0,
-      list: [received, shipped].map((template) => ({
+      list: [received, shipped, shippedTracking].map((template) => ({
         ...template,
         inspStatus: "REQ",
       })),
@@ -273,7 +281,11 @@ test("live template lookup accepts approved first-send templates and blocks susp
       const request: typeof fetch = async () =>
         Response.json({
           code: 0,
-          list: [received, shipped].map((t) => ({ ...t, status, inspStatus })),
+          list: [received, shipped, shippedTracking].map((t) => ({
+            ...t,
+            status,
+            inspStatus,
+          })),
         });
       const result = loadAligoTemplates(
         { ...config, testMode: false },
@@ -296,7 +308,10 @@ test("template cache coalesces requests, expires, refreshes explicitly and isola
   const request: typeof fetch = async () => {
     calls++;
     if (fail) throw new Error("private proxy password");
-    return Response.json({ code: 0, list: [received, shipped] });
+    return Response.json({
+      code: 0,
+      list: [received, shipped, shippedTracking],
+    });
   };
   await Promise.all([cached(config, request), cached(config, request)]);
   await cached(config, request);
@@ -358,7 +373,7 @@ test("Aligo sends exactly one form request, no SMS fallback, and separates test 
     let calls = 0;
     const provider = aligoProvider(
       { ...config, testMode },
-      { received, shipped },
+      { received, shipped, shippedTracking },
       async (url, init) => {
         calls++;
         assert.equal(url, "https://kakaoapi.aligo.in/akv10/alimtalk/send/");
@@ -423,7 +438,7 @@ test("Aligo rejections are retryable but uncertain responses/timeouts never retr
     let calls = 0;
     const provider = aligoProvider(
       { ...config, testMode: false },
-      { received, shipped },
+      { received, shipped, shippedTracking },
       async () => {
         calls++;
         return response();
@@ -454,7 +469,7 @@ test("Aligo test acknowledgements do not require a real-send message ID", async 
       let calls = 0;
       const provider = aligoProvider(
         { ...config, testMode },
-        { received, shipped },
+        { received, shipped, shippedTracking },
         async () => {
           calls++;
           return Response.json(reply);
@@ -486,10 +501,14 @@ test("Aligo test mode still distinguishes rejection from invalid or conflicting 
     [{ message: "No result code" }, "unknown"],
   ] as const) {
     let calls = 0;
-    const provider = aligoProvider(config, { received, shipped }, async () => {
-      calls++;
-      return Response.json(reply);
-    });
+    const provider = aligoProvider(
+      config,
+      { received, shipped, shippedTracking },
+      async () => {
+        calls++;
+        return Response.json(reply);
+      },
+    );
     const result = await provider.send(
       receivedJob.phone,
       provider.prepare(receivedJob),
@@ -503,10 +522,14 @@ test("Aligo test mode still distinguishes rejection from invalid or conflicting 
 
 test("dispatch persists exact prepared content before send and does not send on snapshot/provider mismatch", async () => {
   const steps: string[] = [];
-  const provider = aligoProvider(config, { received, shipped }, async () => {
-    steps.push("send");
-    return Response.json({ code: 0 });
-  });
+  const provider = aligoProvider(
+    config,
+    { received, shipped, shippedTracking },
+    async () => {
+      steps.push("send");
+      return Response.json({ code: 0 });
+    },
+  );
   const store = {
     claim: async () => [receivedJob],
     prepare: async (
@@ -550,4 +573,34 @@ test("dispatch persists exact prepared content before send and does not send on 
     ),
   );
   assert.deepEqual(steps, []);
+});
+
+test("shipping selects tracking template only for the shipment snapshot and includes all numbers", () => {
+  const provider = aligoProvider(config, {
+    received,
+    shipped,
+    shippedTracking,
+  });
+  for (const trackingNumbers of [
+    undefined,
+    [],
+    ["001234567890"],
+    ["001234567890", "009876543210"],
+  ]) {
+    const job = {
+      ...shippedJob,
+      payload: { ...(shippedJob.payload as object), trackingNumbers },
+    };
+    const result = provider.prepare(job);
+    assert.equal(
+      result.templateCode,
+      trackingNumbers?.length ? "UM_3439" : "UM_0737",
+    );
+    if (trackingNumbers?.length) {
+      assert.ok(result.text.includes("택배사: 롯데택배"));
+      assert.ok(
+        result.text.includes(`운송장번호: ${trackingNumbers.join(", ")}`),
+      );
+    }
+  }
 });

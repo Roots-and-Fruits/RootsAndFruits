@@ -217,6 +217,9 @@ test("counter pauses for detail/payment/reorder and hidden tabs, then reloads on
   page,
 }) => {
   const order = makeOrder(999);
+  await page.route(`**/api/admin/pos-receipt/${order.id}`, (route) =>
+    route.fulfill({ json: { date: "2026-10-16", number: null } }),
+  );
   let calls = 0;
   await page.route("**/api/admin/orders?*", async (route) => {
     calls++;
@@ -252,6 +255,9 @@ test("counter pauses for detail/payment/reorder and hidden tabs, then reloads on
   expect(calls).toBe(baseline);
   await expect(payment.getByLabel("카드", { exact: true })).toBeChecked();
   await payment.getByRole("button", { name: "확인", exact: true }).click();
+  await page
+    .getByRole("button", { name: "건너뛰기 · 닫기", exact: true })
+    .click();
   await expect(button).toContainText("10초");
   expect(calls).toBe(baseline + 1);
   await expect(

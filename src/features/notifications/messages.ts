@@ -23,6 +23,7 @@ const shipped = z.object({
   orderNumber: number,
   position: number,
   recipientName: z.string().min(1),
+  trackingNumbers: z.array(z.string().regex(/^[0-9]{1,40}$/)).default([]),
 });
 
 const items = z
@@ -60,6 +61,13 @@ function itemText(
     .join(", ");
 }
 
+export function shippingHasTracking(job: NotificationJob): boolean {
+  return (
+    job.event === "shipped" &&
+    shipped.parse(job.payload).trackingNumbers.length > 0
+  );
+}
+
 export function aligoVariables(job: NotificationJob): Record<string, string> {
   if (job.event === "received") {
     const value = received
@@ -87,5 +95,7 @@ export function aligoVariables(job: NotificationJob): Record<string, string> {
     보내는분: line(value.senderName),
     받는분: line(value.recipientName),
     발송상품: itemText(value.items, value.category),
+    택배회사명: "롯데택배",
+    송장번호: value.trackingNumbers.join(", "),
   };
 }

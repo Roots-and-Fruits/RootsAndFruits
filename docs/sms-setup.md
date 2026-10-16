@@ -18,6 +18,7 @@ ALIGO_SENDER_KEY=채널_발신프로필_키
 ALIGO_SENDER_NUMBER=등록한_발신번호_숫자만
 ALIGO_ORDER_TEMPLATE_CODE=UM_0746
 ALIGO_SHIPPING_TEMPLATE_CODE=UM_0737
+ALIGO_SHIPPING_TRACKING_TEMPLATE_CODE=UM_3439
 ALIGO_TEST_MODE=true
 # Fixie에서 복사한 인증정보 포함 HTTP/HTTPS 프록시 URL
 FIXIE_URL=
@@ -35,7 +36,8 @@ FIXIE_URL=
 ## 템플릿과 내용
 
 - 접수 `UM_0746`: 주문번호·배송지수·주문금액·배송지정보.
-- 발송 `UM_0737`: 보내는분·받는분·발송상품.
+- 송장 없는 발송 `UM_0737`: 보내는분·받는분·발송상품.
+- 송장 있는 발송 `UM_3439`: 보내는분·받는분·발송상품·택배회사명(롯데택배)·송장번호(모든 번호를 쉼표와 공백으로 연결).
 - 사용자가 전달한 강조 타이틀은 ‘주문 접수가 완료되었습니다.’ / ‘상품이 발송되었습니다.’, 보조 문구는 ‘나무와열매’다. **알리고에 저장된 최종 등록본을 API로 읽어 사용하며 추정한 줄바꿈을 고정하지 않는다.**
 - 본문·강조 타이틀·등록 버튼을 치환하며 보조 문구·이미지는 등록 템플릿 설정을 따른다. 실발송은 `inspStatus=APR`이며 `status=A` 또는 `R`인 템플릿을 허용하고 `S`는 차단한다. 승인과 사용 상태는 별개다. 조회 실패는 작업 선점 전에 중단해 대기 건을 소모하지 않는다. 템플릿 목록을 한 번에 조회하고 서버 인스턴스별 메모리에서 5분간 재사용한다. 동시에 시작한 일반 조회도 합친다. ‘연결 확인/새 연결 적용’과 CLI는 최신 템플릿을 조회하며 실패한 응답·기한이 지난 응답은 재사용하지 않는다. 계정·템플릿·테스트 모드·프록시가 바뀌면 새로 조회한다. 콜드 스타트·다른 인스턴스 사이의 캐시는 공유하지 않는다.
 - 상태 해석 근거: [알리고 API](https://smartsms.aligo.in/alimapi.html)는 `APR`(승인)과 `R`(대기)을 구분하며, 같은 알림톡 상태 체계를 설명하는 [핑거푸시 공식 가이드](https://developers.fingerpush.com/alimtalk-cj/alimtalk-manual-2)는 `R`을 발송 전, `A`를 한 번 이상 발송된 상태로 설명한다. 실제 등록본이 `APR + R`로 조회되는 것과 함께 판단해 첫 발송을 앱에서 막지 않는다. 최종 발송 접수·수신 성공은 실제 알리고 응답/결과로 별도 확인한다.
@@ -97,3 +99,7 @@ SOLAPI 어댑터·문자 본문 생성·공급자 선택을 제거했다. 이전
 기존 설치에서는 로컬과 Vercel의 발송 게이트를 `ALIGO_ENABLED`로 옮긴다. 기존에 켜두었다면 `ALIGO_ENABLED=true`, 꺼두었다면 `false`를 사용한다. `SMS_ENABLED`, `NOTIFICATION_PROVIDER`, `SOLAPI_API_KEY`, `SOLAPI_API_SECRET`, `SOLAPI_SENDER_NUMBER`, `NOTIFICATION_CRON_SECRET`는 더 이상 사용하지 않으므로 삭제한다. 외부에서 기존 `/api/notifications/process` 호출을 등록했다면 해당 스케줄도 삭제한다. Vercel 변경은 재배포 후 적용된다.
 
 구현: `messages.ts`(템플릿 변수), `aligo.ts`(발송), `aligo-transport.ts`(Fixie 연결), `dispatch.ts`(내부 작업 처리), `server.ts`(환경·DB). SQL은 별도 파일로 제공하며 사용자가 직접 실행한다.
+
+### 송장 포함 발송 안내
+
+`202610160002_shipping_tracking_notification.sql`을 Supabase에 적용하고 앱을 배포한다. 새 환경변수의 기본값은 `UM_3439`이다. 연결 확인은 세 템플릿을 조회하므로 실발송 전 모두 검수 승인 상태인지 확인한다. 발송 완료 시 배송지의 송장번호를 스냅샷으로 저장한다. 번호가 있으면 UM_3439에 롯데택배와 모든 번호(쉼표 구분)를 넣고, 없으면 UM_0737을 사용한다. 기존 대기·발송 이력은 변경하지 않는다. 여러 번호를 포함한 카카오 배송조회는 실수신 테스트가 필요하다.

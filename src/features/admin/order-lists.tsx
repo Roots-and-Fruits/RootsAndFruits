@@ -15,7 +15,7 @@ import {
 } from "./schema";
 
 const checkoutColumns =
-  "lg:grid-cols-[4.5rem_9rem_5.5rem_minmax(0,1fr)_3rem_6.5rem_10rem]";
+  "lg:grid-cols-[4.5rem_10rem_5.5rem_minmax(0,1fr)_3rem_6.5rem_10rem]";
 const managementColumns =
   "lg:grid-cols-[4rem_6rem_5rem_minmax(0,1.7fr)_3rem_6rem_8rem_104px_minmax(6rem,0.5fr)]";
 const shippingColumns =

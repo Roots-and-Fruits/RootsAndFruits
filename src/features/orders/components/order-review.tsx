@@ -54,9 +54,13 @@ export function OrderReview({
     <div>
       <section className="mb-7 flex items-start justify-between gap-3 rounded-2xl bg-secondary/60 p-5">
         <div>
-          <p className="mb-2 text-xs text-muted-foreground">보내는 분</p>
-          <p className="font-semibold">{sender.name}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{sender.phone}</p>
+          <p className="mb-2 text-xs sm:text-base text-muted-foreground">
+            보내는 분
+          </p>
+          <p className="font-semibold sm:text-xl">{sender.name}</p>
+          <p className="mt-1 text-sm sm:text-lg text-muted-foreground">
+            {sender.phone}
+          </p>
         </div>
         <Button variant="ghost" size="sm" onClick={onEditSender}>
           <Pencil className="size-3.5" />
@@ -73,7 +77,7 @@ export function OrderReview({
             <div className="mb-4 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <MapPin className="size-4 text-primary" />
-                <h3 className="font-semibold">
+                <h3 className="font-semibold sm:text-xl">
                   {index + 1}. {delivery.recipient.name}
                 </h3>
               </div>
@@ -120,7 +124,7 @@ export function OrderReview({
                 )}
               </div>
             </div>
-            <p className="text-sm leading-6 text-muted-foreground">
+            <p className="text-sm sm:text-lg leading-6 text-muted-foreground">
               {delivery.recipient.phone}
               <br />({delivery.recipient.postalCode}){" "}
               {delivery.recipient.address}
@@ -128,7 +132,7 @@ export function OrderReview({
               {delivery.recipient.addressDetail}
             </p>
             {category === "product" && (
-              <p className="mt-3 text-xs text-muted-foreground">
+              <p className="mt-3 text-xs sm:text-base text-muted-foreground">
                 {delivery.deliveryMode === "regular"
                   ? "일반 배송 · 가능한 빠르게 보내드려요"
                   : `예약 배송 · ${delivery.requestedDate}`}
@@ -140,7 +144,7 @@ export function OrderReview({
                 return (
                   <li
                     key={item.productId}
-                    className="flex justify-between gap-3 text-sm"
+                    className="flex justify-between gap-3 text-sm sm:text-lg"
                   >
                     <span>
                       {productLabel(product)}
@@ -155,7 +159,7 @@ export function OrderReview({
                 );
               })}
             </ul>
-            <p className="mt-4 text-right text-sm text-muted-foreground">
+            <p className="mt-4 text-right text-sm sm:text-lg text-muted-foreground">
               상품 합계{" "}
               {formatWon(
                 calculateDeliveryAmounts(
@@ -177,7 +181,7 @@ export function OrderReview({
                 </>
               )}
             </p>
-            <p className="mt-4 text-right font-semibold tabular-nums">
+            <p className="mt-4 text-right sm:text-xl font-semibold tabular-nums">
               {formatWon(
                 calculateDeliveryAmounts(
                   delivery.items,
@@ -191,30 +195,30 @@ export function OrderReview({
       </div>
       <Button
         variant="outline"
-        className="mt-5 h-13 w-full rounded-xl border-dashed"
+        className="mt-6 min-h-16 w-full rounded-xl border-2 border-primary bg-secondary px-5 py-4 text-base font-bold text-primary hover:bg-primary hover:text-primary-foreground sm:min-h-20 sm:text-xl"
         onClick={onAdd}
       >
-        <Plus className="size-4" />
+        <Plus className="size-6" />
         {hasPendingDelivery ? "배송지 추가 이어쓰기" : "다른 배송지 추가"}
       </Button>
       {hasPendingDelivery && (
-        <p className="mt-3 text-xs leading-5 text-muted-foreground">
+        <p className="mt-3 text-xs sm:text-base leading-5 text-muted-foreground">
           작성 중인 추가 배송지가 있어요. 입력을 완료하면 주문에 포함돼요.
         </p>
       )}
       <div className="mt-8 flex items-end justify-between gap-3 border-t border-border pt-6">
         <div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs sm:text-base text-muted-foreground">
             배송지 {deliveries.length}곳
           </p>
           <p className="mt-2 font-semibold">총 결제금액</p>
         </div>
-        <strong className="text-2xl text-primary tabular-nums">
+        <strong className="text-2xl sm:text-3xl text-primary tabular-nums">
           {formatWon(calculateTotal(deliveries, products, bundleDiscount))}
         </strong>
       </div>
       <div
-        className="mt-7 rounded-xl bg-secondary p-4 text-sm leading-6 text-muted-foreground"
+        className="mt-7 rounded-xl bg-secondary p-4 text-sm sm:text-lg leading-6 text-muted-foreground"
         role="status"
       >
         {preview

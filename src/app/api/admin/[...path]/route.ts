@@ -4,6 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getStaff } from "@/features/admin/auth";
 import {
+  markCustomerSession,
+  clearCustomerSession,
+} from "@/features/auth/server";
+import {
   adminTimingLabel,
   createAdminTiming,
   type AdminTiming,
@@ -61,6 +65,21 @@ async function readAdmin(
     const { path } = await context.params;
     const db = createServiceClient();
     const url = new URL(request.url);
+    if (path[0] === "pos-receipt") {
+      const result = await db.rpc("manage_pos_receipt", {
+        p_id: uuid.parse(path[1]),
+        p_actor: staffUser.id,
+      });
+      if (result.error && ["PGRST202", "42883"].includes(result.error.code))
+        throw new HttpError(
+          "영수증번호 DB 업데이트가 필요합니다. 202610160001_pos_receipt.sql을 적용해주세요.",
+          503,
+        );
+      checkDb(result.error);
+      return Response.json(result.data, {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
     if (path[0] === "notifications") {
       const page = z.coerce
         .number()
@@ -268,11 +287,15 @@ export async function POST(request: Request, context: Context) {
         await client.auth.signOut();
         throw new HttpError("아이디 또는 비밀번호를 확인해주세요.", 401);
       }
+      await markCustomerSession(request);
       return Response.json({ ok: true });
     }
     if (path[0] === "logout") {
       const client = await createClient();
-      await client.auth.signOut();
+      const { error } = await client.auth.signOut({ scope: "local" });
+      if (error)
+        throw new HttpError("로그아웃하지 못했어요. 다시 시도해주세요.", 503);
+      await clearCustomerSession(request);
       return Response.json({ ok: true });
     }
     const staff = await getStaff();
@@ -384,6 +407,21 @@ export async function POST(request: Request, context: Context) {
         p_action: action,
         p_payment_method: paymentMethod,
         p_actor: staff.id,
+      });
+    } else if (path[0] === "pos-receipt") {
+      const value = z
+        .object({
+          number: z.number().int().min(1).max(2147483647),
+          expected: z.number().int().positive().nullable(),
+          allowDuplicate: z.boolean().default(false),
+        })
+        .parse(body);
+      result = await db.rpc("manage_pos_receipt", {
+        p_id: uuid.parse(path[1]),
+        p_actor: staff.id,
+        p_number: value.number,
+        p_expected: value.expected,
+        p_allow_duplicate: value.allowDuplicate,
       });
     } else if (path[0] === "notes") {
       result = await db.rpc("save_note", {

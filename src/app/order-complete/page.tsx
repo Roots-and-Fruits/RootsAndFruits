@@ -1,6 +1,7 @@
 "use client";
 import { getReceipt, clearReceipt } from "@/features/orders/submission-storage";
 import { useSyncExternalStore } from "react";
+import { useCustomerSession } from "@/features/auth/session-provider";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/site/site-header";
@@ -12,6 +13,9 @@ import { CompletionHomeRedirect } from "@/features/orders/components/completion-
 const subscribe = () => () => {};
 const snapshot = getReceipt;
 export default function OrderComplete() {
+  const session = useCustomerSession();
+  const showBankTransfer =
+    !session.loading && !session.error && session.account?.kind !== "tablet";
   const raw = useSyncExternalStore(subscribe, snapshot, () => null);
   let receipt: {
     orderNumber: number;
@@ -45,26 +49,28 @@ export default function OrderComplete() {
             <p className="my-6 text-muted-foreground">
               아직 결제 전이에요. 카운터에서 결제를 진행해주세요.
             </p>
-            <section
-              aria-labelledby="bank-transfer-title"
-              className="mb-6 rounded-2xl border bg-secondary/50 p-5"
-            >
-              <h2 id="bank-transfer-title" className="font-semibold">
-                계좌송금 안내
-              </h2>
-              <p className="mt-3 text-sm">
-                {completionSettings.bankTransfer.bank}
-              </p>
-              <p className="mt-1 select-all text-xl font-bold tabular-nums text-primary">
-                {completionSettings.bankTransfer.accountNumber}
-              </p>
-              <p className="mt-2 text-sm">
-                예금주: {completionSettings.bankTransfer.accountHolder}
-              </p>
-              <p className="mt-3 text-sm text-muted-foreground">
-                송금 후 카운터에 알려주세요.
-              </p>
-            </section>
+            {showBankTransfer && (
+              <section
+                aria-labelledby="bank-transfer-title"
+                className="mb-6 rounded-2xl border bg-secondary/50 p-5"
+              >
+                <h2 id="bank-transfer-title" className="font-semibold">
+                  계좌송금 안내
+                </h2>
+                <p className="mt-3 text-sm">
+                  {completionSettings.bankTransfer.bank}
+                </p>
+                <p className="mt-1 select-all text-xl font-bold tabular-nums text-primary">
+                  {completionSettings.bankTransfer.accountNumber}
+                </p>
+                <p className="mt-2 text-sm">
+                  예금주: {completionSettings.bankTransfer.accountHolder}
+                </p>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  송금 후 카운터에 알려주세요.
+                </p>
+              </section>
+            )}
             {receipt.storageWarning && (
               <p role="alert" className="my-4 text-sm text-destructive">
                 브라우저 저장소를 사용할 수 없어요. 이 화면을 나가기 전에

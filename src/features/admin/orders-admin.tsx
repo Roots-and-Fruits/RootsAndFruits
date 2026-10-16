@@ -3,6 +3,7 @@ import { adminProductLabel } from "./schema";
 import { useEffect, useState } from "react";
 import { AdminButton as Button } from "./admin-button";
 import { AdminInput as Input, AdminSelect } from "./admin-fields";
+import { PosReceiptPicker } from "./pos-receipt-picker";
 import { CheckoutList } from "./order-lists";
 import {
   Dialog,
@@ -34,6 +35,10 @@ const filterLabels = [
   ["processing", "출발 날짜"],
 ] as const;
 export function OrdersAdmin({ section }: { section: string }) {
+  const [receiptOrder, setReceiptOrder] = useState<{
+    id: string;
+    order_number: number;
+  } | null>(null);
   const [orders, setOrders] = useState<Checkout[]>([]),
     [count, setCount] = useState(0),
     [products, setProducts] = useState<AdminProduct[] | null>(null),
@@ -127,7 +132,15 @@ export function OrdersAdmin({ section }: { section: string }) {
     setCatalogRevision((v) => v + 1);
   };
   const refreshCounter = () => {
-    if (loading || refreshing || busy || detail || reorder || document.hidden)
+    if (
+      loading ||
+      refreshing ||
+      busy ||
+      detail ||
+      reorder ||
+      receiptOrder ||
+      document.hidden
+    )
       return;
     setRefreshing(true);
     setRevision((v) => v + 1);
@@ -321,7 +334,7 @@ export function OrdersAdmin({ section }: { section: string }) {
             </Button>
             {section === "counter" ? (
               <CounterRefreshButton
-                paused={!!detail || !!reorder || busy}
+                paused={!!detail || !!reorder || !!receiptOrder || busy}
                 refreshing={loading || refreshing}
                 onRefresh={refreshCounter}
               />
@@ -394,6 +407,13 @@ export function OrdersAdmin({ section }: { section: string }) {
           </div>
         </>
       )}
+      {receiptOrder && (
+        <PosReceiptPicker
+          key={receiptOrder.id}
+          order={receiptOrder}
+          onClose={() => setReceiptOrder(null)}
+        />
+      )}
       <Dialog open={!!detail} onOpenChange={(open) => !open && setDetail(null)}>
         <DialogContent className="admin-order-detail max-h-[90dvh] overflow-y-auto p-5 sm:max-w-4xl sm:p-8">
           <DialogHeader>
@@ -409,13 +429,26 @@ export function OrdersAdmin({ section }: { section: string }) {
               order={detail}
               canPrint={section === "counter" || section === "orders"}
               busy={busy}
-              onPay={(paymentMethod) =>
-                act(
+              onReceipt={() => {
+                setReceiptOrder({
+                  id: detail.id,
+                  order_number: detail.order_number,
+                });
+                setDetail(null);
+              }}
+              onPay={async (paymentMethod) => {
+                const target = {
+                  id: detail.id,
+                  order_number: detail.order_number,
+                };
+                const message = await act(
                   `orders/${detail.id}/pay`,
                   { paymentMethod },
                   "결제 완료를 기록했습니다.",
-                )
-              }
+                );
+                if (!message) setReceiptOrder(target);
+                return message;
+              }}
               onAction={(action) =>
                 act(
                   `orders/${detail.id}/${action}`,

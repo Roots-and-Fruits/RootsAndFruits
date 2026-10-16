@@ -6,7 +6,11 @@ import {
   type PreparedNotification,
   type SendResult,
 } from "./provider";
-import { aligoVariables, type NotificationJob } from "./messages";
+import {
+  aligoVariables,
+  shippingHasTracking,
+  type NotificationJob,
+} from "./messages";
 import {
   aligoRequest,
   validFixieUrl,
@@ -21,6 +25,7 @@ export type AligoConfig = {
   from: string;
   orderTemplate: string;
   shippingTemplate: string;
+  shippingTrackingTemplate: string;
   testMode: boolean;
   proxyUrl?: string;
 };
@@ -33,6 +38,8 @@ export function aligoConfig(env: NodeJS.ProcessEnv): AligoConfig | null {
   const orderTemplate = env.ALIGO_ORDER_TEMPLATE_CODE?.trim() || "UM_0746";
   const shippingTemplate =
     env.ALIGO_SHIPPING_TEMPLATE_CODE?.trim() || "UM_0737";
+  const shippingTrackingTemplate =
+    env.ALIGO_SHIPPING_TRACKING_TEMPLATE_CODE?.trim() || "UM_3439";
   const testMode = env.ALIGO_TEST_MODE ?? "true";
   const proxyUrl = env.FIXIE_URL?.trim();
   if (
@@ -43,6 +50,7 @@ export function aligoConfig(env: NodeJS.ProcessEnv): AligoConfig | null {
     !/^\d{8,11}$/.test(from) ||
     !/^[A-Za-z0-9_-]{1,50}$/.test(orderTemplate) ||
     !/^[A-Za-z0-9_-]{1,50}$/.test(shippingTemplate) ||
+    !/^[A-Za-z0-9_-]{1,50}$/.test(shippingTrackingTemplate) ||
     !["true", "false"].includes(testMode) ||
     (proxyUrl && !validFixieUrl(proxyUrl)) ||
     (env.VERCEL === "1" && !proxyUrl)
@@ -55,6 +63,7 @@ export function aligoConfig(env: NodeJS.ProcessEnv): AligoConfig | null {
     from,
     orderTemplate,
     shippingTemplate,
+    shippingTrackingTemplate,
     testMode: testMode === "true",
     ...(proxyUrl ? { proxyUrl } : {}),
   };
@@ -82,7 +91,10 @@ export const aligoTemplateSchema = z.object({
   buttons: z.array(buttonSchema).max(5).nullish(),
 });
 export type AligoTemplate = z.infer<typeof aligoTemplateSchema>;
-export type AligoTemplates = Record<NotificationJob["event"], AligoTemplate>;
+export type AligoTemplates = Record<
+  NotificationJob["event"] | "shippedTracking",
+  AligoTemplate
+>;
 const code = z
   .union([z.number().int(), z.string().regex(/^-?\d+$/)])
   .transform(String);
@@ -145,27 +157,33 @@ export async function loadAligoTemplates(
       throw new NotificationError("ALIGO_TEMPLATE_RESPONSE_INVALID");
     if (reply.data.code !== "0")
       throw new NotificationError(`ALIGO_TEMPLATE_${reply.data.code}`);
-    const templates = [config.orderTemplate, config.shippingTemplate].map(
-      (templateCode) => {
-        const matches = (reply.data.list ?? [])
-          .map((item) => aligoTemplateSchema.safeParse(item))
-          .filter(
-            (item) => item.success && item.data.templtCode === templateCode,
-          );
-        if (matches.length !== 1 || !matches[0].success)
-          throw new NotificationError("ALIGO_TEMPLATE_NOT_FOUND");
-        const template = matches[0].data;
-        if (
-          !config.testMode &&
-          // R is the pre-send lifecycle state, separate from review approval.
-          // Approved templates may be used for their first send; S stays blocked.
-          (template.inspStatus !== "APR" || template.status === "S")
-        )
-          throw new NotificationError("ALIGO_TEMPLATE_NOT_APPROVED");
-        return template;
-      },
-    );
-    return { received: templates[0], shipped: templates[1] };
+    const templates = [
+      config.orderTemplate,
+      config.shippingTemplate,
+      config.shippingTrackingTemplate,
+    ].map((templateCode) => {
+      const matches = (reply.data.list ?? [])
+        .map((item) => aligoTemplateSchema.safeParse(item))
+        .filter(
+          (item) => item.success && item.data.templtCode === templateCode,
+        );
+      if (matches.length !== 1 || !matches[0].success)
+        throw new NotificationError("ALIGO_TEMPLATE_NOT_FOUND");
+      const template = matches[0].data;
+      if (
+        !config.testMode &&
+        // R is the pre-send lifecycle state, separate from review approval.
+        // Approved templates may be used for their first send; S stays blocked.
+        (template.inspStatus !== "APR" || template.status === "S")
+      )
+        throw new NotificationError("ALIGO_TEMPLATE_NOT_APPROVED");
+      return template;
+    });
+    return {
+      received: templates[0],
+      shipped: templates[1],
+      shippedTracking: templates[2],
+    };
   } catch (error) {
     if (error instanceof NotificationError) throw error;
     throw new NotificationError("ALIGO_TEMPLATE_CONNECTION_FAILED");
@@ -259,7 +277,11 @@ export function aligoProvider(
   return {
     name: "aligo",
     testMode: config.testMode,
-    prepare: (job) => prepareAligo(job, templates[job.event]),
+    prepare: (job) =>
+      prepareAligo(
+        job,
+        templates[shippingHasTracking(job) ? "shippedTracking" : job.event],
+      ),
     async send(to, message): Promise<SendResult> {
       if (!/^01\d{9}$/.test(to))
         return { status: "failed", errorCode: "INVALID_PHONE" };

@@ -13,6 +13,7 @@ import {
 import { formatWon } from "@/features/orders/calculations";
 import { PaymentAction } from "./payment-action";
 import { ReorderNotice } from "./order-notes";
+import { PosReceiptSummary } from "./pos-receipt-picker";
 import { ReceiptLink } from "./receipt-link";
 import { summarizeOrderItems } from "./order-summary";
 import { TrackingNumbers } from "./tracking-numbers";
@@ -25,6 +26,7 @@ export function OrderDetail({
   onReorder,
   onNote,
   canPrint = false,
+  onReceipt,
 }: {
   order: Checkout;
   busy: boolean;
@@ -36,6 +38,7 @@ export function OrderDetail({
   ) => Promise<string | null>;
   onNote: (id: string, note: string) => void;
   canPrint?: boolean;
+  onReceipt?: () => void;
 }) {
   const beforeExport =
     c.deliveries.length > 0 &&
@@ -81,8 +84,14 @@ export function OrderDetail({
         )}
         <p className="text-3xl font-semibold">결제금액 {formatWon(c.total)}</p>
       </div>
+      {c.paid_at && <PosReceiptSummary id={c.id} />}
       <div className="flex flex-wrap gap-3">
         {canPrint && <ReceiptLink order={c} />}
+        {c.status === "paid" && onReceipt && (
+          <Button variant="outline" onClick={onReceipt}>
+            영수증번호 확인·입력
+          </Button>
+        )}
         {c.status === "pending" && (
           <PaymentAction busy={busy} onConfirm={onPay} />
         )}

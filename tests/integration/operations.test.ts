@@ -2680,3 +2680,79 @@ test("Postgres: shipping worklist has no page cap, keeps full order detail and e
     await db.close();
   }
 });
+
+test("Postgres: shipping snapshots all tracking numbers per delivery without backfill or duplicate notices", async () => {
+  const db = await setup();
+  try {
+    await db.query(
+      "select configure_notification_delivery(true,'aligo',true,$1)",
+      [staff],
+    );
+    const requestId = crypto.randomUUID();
+    await db.query("select submit_checkout($1,$2::jsonb)", [
+      requestId,
+      JSON.stringify(
+        payload([
+          delivery([{ productId: p2, quantity: 1 }]),
+          delivery([{ productId: p2, quantity: 1 }]),
+        ]),
+      ),
+    ]);
+    const order = (
+      await db.query<{ id: string }>(
+        "select id from checkouts where request_id=$1",
+        [requestId],
+      )
+    ).rows[0].id;
+    const ids = (
+      await db.query<{ id: string }>(
+        "select id from deliveries where checkout_id=$1 order by position",
+        [order],
+      )
+    ).rows.map((r) => r.id);
+    const migration = await readFile(
+      "supabase/migrations/202610160002_shipping_tracking_notification.sql",
+      "utf8",
+    );
+    await db.exec(migration);
+    await db.exec(migration);
+    await db.query("select change_checkout($1,'pay',$2,'cash')", [
+      order,
+      staff,
+    ]);
+    await db.query("select commit_export($1,$2,'test.xlsx','file',$3)", [
+      crypto.randomUUID(),
+      ids,
+      staff,
+    ]);
+    for (const number of ["001234567890", "009876543210"])
+      await db.query(
+        "insert into delivery_tracking_numbers(delivery_id,tracking_number,created_by) values($1,$2,$3)",
+        [ids[0], number, staff],
+      );
+    await db.query("select mark_shipped($1,$2)", [ids, staff]);
+    const read = async () =>
+      (
+        await db.query<NotificationJob>(
+          "select * from order_notifications where event='shipped' order by payload->>'position'",
+        )
+      ).rows;
+    const before = await read();
+    assert.equal(before.length, 2);
+    assert.equal(
+      aligoVariables(before[0]).송장번호,
+      "001234567890, 009876543210",
+    );
+    assert.equal(aligoVariables(before[1]).송장번호, "");
+    assert.ok(before.every((j) => j.phone === sender.phone));
+    await db.query(
+      "delete from delivery_tracking_numbers where delivery_id=$1",
+      [ids[0]],
+    );
+    await db.query("select mark_shipped($1,$2)", [ids, staff]);
+    await db.exec(migration);
+    assert.deepEqual(await read(), before);
+  } finally {
+    await db.close();
+  }
+});

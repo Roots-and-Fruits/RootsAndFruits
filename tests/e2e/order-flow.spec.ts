@@ -547,15 +547,18 @@ test("order actions stay visible through scrolling, steps, review, edit and dial
     window.scrollTo(0, document.documentElement.scrollHeight),
   );
   await expectFixedActions(page);
-  const footerLink = page
-    .getByRole("contentinfo")
-    .getByRole("link", { name: "회원 로그인", exact: true });
+  const footer = page.getByRole("contentinfo");
+  const footerText = footer.getByText(/농장에서 전하는 마음/);
+  await expect(
+    footer.getByRole("link", { name: /로그인|로그아웃|마이페이지/ }),
+  ).toHaveCount(0);
+  await expect(footerText).toBeVisible();
   await expect(
     page.locator('a[href^="/namu-admin"], a[href^="/admin"]'),
   ).toHaveCount(0);
   expect(
-    (await footerLink.boundingBox())!.y +
-      (await footerLink.boundingBox())!.height,
+    (await footerText.boundingBox())!.y +
+      (await footerText.boundingBox())!.height,
   ).toBeLessThan((await page.locator("[data-order-actions]").boundingBox())!.y);
   await page.evaluate(() => window.scrollTo(0, 0));
   await sender(page);

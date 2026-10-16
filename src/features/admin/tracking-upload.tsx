@@ -193,8 +193,9 @@ export function TrackingUpload({
           {!saved ? (
             <>
               <p className="text-sm text-muted-foreground">
-                AJ열 특기사항에서 ‘주문번호:79-1’ 형식을 먼저 찾고, 없으면 AO열
-                고객메세지를 확인합니다. 일반 요청사항은 건너뜁니다.
+                AS열 특기사항에서 ‘주문번호:79-1’ 형식을 찾습니다. 운송장번호는
+                E열에서 읽고 하이픈(-)과 공백을 제거합니다. 일반 요청사항은
+                건너뜁니다.
               </p>
               <label className="space-y-2 text-sm font-semibold">
                 송장 내역 엑셀
@@ -340,8 +341,8 @@ export function TrackingUpload({
                     매핑된 배송 건들을 발송 완료 처리할까요?
                   </p>
                   <p className="text-sm">
-                    발송 대기 {pending.length}곳을 처리합니다. 알림톡 발송 설정이
-                    켜져 있으면 기존 발송 안내가 전송됩니다.
+                    발송 대기 {pending.length}곳을 처리합니다. 알림톡 발송
+                    설정이 켜져 있으면 기존 발송 안내가 전송됩니다.
                   </p>
                   {warning && (
                     <p className="text-sm font-semibold text-amber-800">

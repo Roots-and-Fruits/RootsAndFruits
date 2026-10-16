@@ -186,6 +186,24 @@ html:has([data-order-actions]) {
   }
 }
 
+/* Keep customer order forms readable on portrait tablets. */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .order-page {
+    font-size: 18px;
+    --text-xs: 0.9375rem;
+    --text-sm: 1.0625rem;
+    --text-base: 1.125rem;
+  }
+  .order-page input {
+    min-height: 3.5rem;
+    font-size: 18px;
+  }
+  .order-page [data-order-actions] button {
+    min-height: 3.5rem;
+    font-size: 18px;
+  }
+}
+
 /* Larger type and controls for counter work and order/payment dialogs. */
 .admin-counter {
   font-size: 18px;

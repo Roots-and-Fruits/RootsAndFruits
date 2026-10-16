@@ -5,17 +5,14 @@ import type { Checkout } from "../../src/features/admin/schema";
 async function file(rows: [string, string][]) {
   const w = new ExcelJS.Workbook(),
     s = w.addWorksheet("Sheet0");
-  s.getCell("G1").value = "운송장번호";
-  s.getCell("AJ1").value = "특기사항";
-  s.getCell("AO1").value = "고객메세지";
+  s.getCell("E1").value = "운송장번호";
+  s.getCell("AS1").value = "특기사항";
   rows.forEach(([key, number], i) => {
-    s.getCell(`G${i + 2}`).value = number;
-    const column = i % 2 ? "AO" : "AJ";
-    s.getCell(`${column}${i + 2}`).value = /^\d/.test(key)
-      ? `주문번호:${key}`
-      : key;
-    if (column === "AO" && key)
-      s.getCell(`AJ${i + 2}`).value = "문 앞에 놓아주세요";
+    s.getCell(`E${i + 2}`).value = number.replace(
+      /^(\d{4})(\d{4})(\d{4})$/,
+      "$1-$2-$3",
+    );
+    s.getCell(`AS${i + 2}`).value = /^\d/.test(key) ? `주문번호:${key}` : key;
   });
   return {
     name: "송장내역.xlsx",
@@ -269,7 +266,7 @@ test("tracking API enforces authentication, workbook headers, status and concurr
     },
   });
   expect(wrong.status()).toBe(400);
-  expect((await wrong.json()).error).toContain("AO열");
+  expect((await wrong.json()).error).toContain("AS열");
   // Closing after a lost save response must also refresh possibly committed numbers.
   await upload(page, [[key, "000000000007"]]);
   await page.getByLabel(`${key} 처리 방법`).selectOption("add");
