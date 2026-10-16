@@ -268,7 +268,7 @@ export function TrackingUpload({
                               <option value="" disabled>
                                 추가 또는 교체를 선택해주세요
                               </option>
-                              <option value="add">기존 번호에 추가</option>
+                              <option value="add">새 번호만 추가 (중복 제외)</option>
                               <option value="replace" disabled={g.incomplete}>
                                 기존 번호 전체 교체
                               </option>
@@ -280,6 +280,15 @@ export function TrackingUpload({
                           <p className="text-amber-800">
                             같은 배송지에 오류 행이 있어 전체 교체할 수
                             없습니다. 정상 번호 추가는 가능합니다.
+                          </p>
+                        )}
+                        {modes[g.id] === "add" && (
+                          <p className="break-all">
+                            기존 송장번호는 유지하고 중복 번호는 제외합니다.
+                            새로 추가될 송장번호:{" "}
+                            {g.numbers
+                              .filter((n) => !g.tracking_numbers.includes(n))
+                              .join(", ") || "없음 (모두 이미 저장된 번호입니다)"}
                           </p>
                         )}
                         {modes[g.id] === "replace" && (
