@@ -193,7 +193,11 @@ export function OrdersAdmin({ section }: { section: string }) {
       )}
       {section !== "shipping" && (
         <form
-          className={`grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-2 lg:gap-x-5 lg:gap-y-3 ${section === "counter" ? "lg:grid-cols-[16rem_auto]" : "lg:grid-cols-4"}`}
+          className={
+            section === "counter"
+              ? "counter-search flex flex-wrap items-center gap-2 rounded-xl border bg-card p-2 sm:p-3"
+              : "grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-2 lg:grid-cols-4 lg:gap-x-5 lg:gap-y-3"
+          }
           onSubmit={(e) => {
             e.preventDefault();
             setError("");
@@ -209,11 +213,16 @@ export function OrdersAdmin({ section }: { section: string }) {
           ).map(([key, label]) => (
             <label
               key={key}
-              className="flex min-w-0 flex-col gap-2 text-sm lg:gap-1.5"
+              className={
+                section === "counter"
+                  ? "flex min-w-0 items-center gap-2 text-sm"
+                  : "flex min-w-0 flex-col gap-2 text-sm lg:gap-1.5"
+              }
             >
-              <span>{label}</span>
+              <span className="shrink-0">{label}</span>
               <Input
                 type={key === "date" || key === "processing" ? "date" : "text"}
+                className={section === "counter" ? "w-28 sm:w-36" : undefined}
                 value={filters[key] || ""}
                 onChange={(e) =>
                   setFilters({ ...filters, [key]: e.target.value })

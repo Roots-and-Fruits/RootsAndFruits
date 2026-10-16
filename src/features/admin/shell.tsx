@@ -28,7 +28,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState("");
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-card px-5 py-4 lg:px-8 lg:py-3">
+      <header className="sticky top-0 z-40 border-b bg-card px-5 py-4 lg:px-8 lg:py-3">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-4 lg:flex-nowrap lg:gap-8">
           <Link
             className="shrink-0 font-semibold text-primary lg:text-sm"
@@ -73,7 +73,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         id="main-content"
         className="mx-auto max-w-[1504px] p-5 sm:p-8 lg:py-6"
       >
-        <h1 className="mb-7 text-2xl font-semibold lg:mb-5 lg:text-xl">
+        <h1 className="sr-only">
           {links.find(([key]) => key === section)?.[1]}
         </h1>
         {error && <p role="alert">{error}</p>}

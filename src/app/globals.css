@@ -230,3 +230,13 @@ html:has([data-order-actions]) {
   min-height: 56px;
   font-size: 18px;
 }
+
+.admin-counter .counter-search button,
+.admin-counter .counter-search input {
+  min-height: 36px;
+  height: 36px;
+  font-size: 14px;
+}
+.admin-counter .counter-search label {
+  font-size: 14px;
+}
