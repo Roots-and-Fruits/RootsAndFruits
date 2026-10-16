@@ -164,7 +164,9 @@ export function OrdersAdmin({ section }: { section: string }) {
       />
     );
   return (
-    <div className="space-y-6 lg:space-y-5">
+    <div
+      className={`space-y-6 lg:space-y-5 ${section === "counter" ? "admin-counter" : ""}`}
+    >
       {error && (
         <p
           role="alert"
@@ -384,9 +386,11 @@ export function OrdersAdmin({ section }: { section: string }) {
         </>
       )}
       <Dialog open={!!detail} onOpenChange={(open) => !open && setDetail(null)}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="admin-order-detail max-h-[90dvh] overflow-y-auto p-5 sm:max-w-4xl sm:p-8">
           <DialogHeader>
-            <DialogTitle>{detail?.order_number}번 주문</DialogTitle>
+            <DialogTitle className="text-2xl sm:text-3xl">
+              {detail?.order_number}번 주문
+            </DialogTitle>
             <DialogDescription>
               POS에서 실제 결제한 뒤 결제 완료를 기록해주세요.
             </DialogDescription>

@@ -185,3 +185,48 @@ html:has([data-order-actions]) {
     scroll-behavior: auto !important;
   }
 }
+
+/* Larger type and controls for counter work and order/payment dialogs. */
+.admin-counter {
+  font-size: 18px;
+}
+.admin-counter .text-xs {
+  font-size: 15px;
+  line-height: 1.6;
+}
+.admin-counter .text-sm,
+.admin-order-detail .text-sm,
+.admin-order-detail .text-xs {
+  font-size: 16px;
+  line-height: 1.65;
+}
+.admin-counter button,
+.admin-counter input,
+.admin-counter select,
+.admin-order-detail button,
+.admin-order-detail [data-slot="button"],
+.admin-order-detail input,
+.admin-payment button {
+  min-height: 48px;
+  height: auto;
+  font-size: 16px;
+}
+.admin-counter [aria-label="카운터 주문 목록"] li > button {
+  padding-block: 24px;
+  font-size: 20px;
+  line-height: 1.6;
+}
+.admin-counter [aria-label="카운터 주문 목록"] li .text-xs {
+  font-size: 17px;
+  line-height: 1.6;
+}
+.admin-counter [aria-label="카운터 주문 목록"] .text-lg {
+  font-size: 26px;
+}
+.admin-counter [aria-label="카운터 주문 목록"] .whitespace-nowrap {
+  white-space: normal;
+}
+.admin-payment button {
+  min-height: 56px;
+  font-size: 18px;
+}
