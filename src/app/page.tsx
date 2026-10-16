@@ -39,21 +39,16 @@ export default function Home() {
     <>
       <SiteHeader />
       <main id="main-content" className="mx-auto max-w-6xl px-5 pb-8 sm:px-10">
-        <section className="relative overflow-hidden rounded-[2rem] bg-primary px-6 py-6 text-primary-foreground sm:px-12 sm:py-16 lg:min-h-[360px]">
+        <section className="relative overflow-hidden rounded-[2rem] bg-primary px-6 py-6 text-primary-foreground sm:px-10 sm:py-10">
           <div className="relative z-10 max-w-xl">
-            <p className="mb-7 hidden items-center gap-2 text-[10px] font-medium tracking-[0.26em] text-primary-foreground/65 sm:flex">
+            <p className="mb-4 hidden items-center gap-2 text-[10px] font-medium tracking-[0.26em] text-primary-foreground/65 sm:flex">
               <span className="size-1.5 rounded-full bg-accent" /> TREE & BERRY FARM
             </p>
-            <h1 className="text-balance break-keep text-2xl font-semibold leading-[1.3] tracking-[-0.055em] sm:text-5xl sm:leading-[1.35]">
+            <h1 className="text-balance break-keep text-2xl font-semibold leading-[1.3] tracking-[-0.055em] sm:text-[2rem] sm:leading-[1.35]">
               산지에서 갓 수확한 신선함 그대로,
               <br />
               농장에서 식탁으로 직배송!
             </h1>
-            <p className="mt-3 max-w-sm text-sm leading-6 text-primary-foreground/70 sm:mt-6 sm:text-base sm:leading-7">
-              농장에서 만난 싱그러움을 집으로 전해요.
-              <br />
-              어떤 과일을 보내시나요?
-            </p>
           </div>
           <div className="orchard-art pointer-events-none" aria-hidden="true">
             <div className="orchard-ring" />
