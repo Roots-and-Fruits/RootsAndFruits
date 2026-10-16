@@ -193,9 +193,9 @@ export function TrackingUpload({
           {!saved ? (
             <>
               <p className="text-sm text-muted-foreground">
-                AS열 특기사항에서 ‘주문번호:79-1’ 형식을 찾습니다. 운송장번호는
-                E열에서 읽고 하이픈(-)과 공백을 제거합니다. 일반 요청사항은
-                건너뜁니다.
+                AS열에서 ‘주문번호:79-1’을 먼저 찾고, 없으면 AJ열에서 찾습니다.
+                AS열 주문은 E열, AJ열 주문은 G열 운송장번호를 사용하며
+                하이픈(-)과 공백을 제거합니다. 일반 요청사항은 건너뜁니다.
               </p>
               <label className="space-y-2 text-sm font-semibold">
                 송장 내역 엑셀

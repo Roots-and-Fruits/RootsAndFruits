@@ -27,7 +27,7 @@ function cellString(cell: ExcelJS.Cell): string | null {
 function deliveryIdentifier(
   value: string | null,
 ): Pick<TrackingInputRow, "key" | "error" | "skipped"> {
-  // Only the AS special-notes field identifies one of our deliveries.
+  // Only an explicit order-number prefix identifies one of our deliveries.
   if (value?.startsWith("주문번호")) {
     const match = /^주문번호\s*:\s*(.+)$/.exec(value);
     if (match && trackingKey.test(match[1])) return { key: match[1] };
@@ -82,27 +82,47 @@ export async function readTrackingWorkbook(
       "엑셀 파일을 읽지 못했습니다. 택배사에서 내려받은 원본 파일을 확인해주세요.",
     );
   }
-  const sheets = workbook.worksheets.filter(
-    (s) =>
-      cellString(s.getCell("E1")) === "운송장번호" &&
-      cellString(s.getCell("AS1")) === "특기사항",
-  );
+  const formats = [
+    { identifier: "AS", number: "E" },
+    { identifier: "AJ", number: "G" },
+  ] as const;
+  const sheets = workbook.worksheets
+    .map((sheet) => ({
+      sheet,
+      formats: formats.filter(
+        (format) =>
+          cellString(sheet.getCell(`${format.number}1`)) === "운송장번호" &&
+          cellString(sheet.getCell(`${format.identifier}1`)) === "특기사항",
+      ),
+    }))
+    .filter((entry) => entry.formats.length > 0);
   if (sheets.length !== 1)
     throw new Error(
-      "1행 E열 ‘운송장번호’와 AS열 ‘특기사항’이 있는 시트가 하나여야 합니다.",
+      "1행 E열 ‘운송장번호’·AS열 ‘특기사항’ 또는 G열 ‘운송장번호’·AJ열 ‘특기사항’이 있는 시트가 하나여야 합니다.",
     );
-  const sheet = sheets[0];
+  const { sheet, formats: availableFormats } = sheets[0];
   const rows: TrackingInputRow[] = [];
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
     if (rows.length >= trackingRowLimit)
       throw new Error("한 번에 데이터 1,000행까지 업로드할 수 있습니다.");
-    const identifier = deliveryIdentifier(cellString(row.getCell("AS")));
+    const candidates = availableFormats.map((format) => ({
+      format,
+      identifier: deliveryIdentifier(
+        cellString(row.getCell(format.identifier)),
+      ),
+    }));
+    // AS/E wins when its identifier is valid; never mix columns from two formats.
+    const selected =
+      candidates.find(
+        ({ identifier }) => identifier.key && !identifier.error,
+      ) ?? candidates[0];
+    const { identifier, format } = selected;
     if (identifier.skipped) {
       rows.push({ row: rowNumber, key: "", number: "", skipped: true });
       return;
     }
-    const raw = cellString(row.getCell("E"));
+    const raw = cellString(row.getCell(format.number));
     const number = raw?.replace(/[\s-]/g, "") ?? "";
     const error =
       identifier.error ||

@@ -40,7 +40,7 @@ test("tracking workbook uses E/AS, preserves zeros and rejects ambiguous cells p
   assert.ok(rows.slice(2).every((r) => r.error));
   assert.equal(rows[0].key, "123-1");
 });
-test("tracking identifiers use only AS and never fall back to old columns", async () => {
+test("tracking identifiers ignore fallback columns without matching tracking header", async () => {
   const values: ExcelJS.CellValue[] = [
     "주문번호:79-1",
     "  주문번호 : 81-1  ",
@@ -77,7 +77,7 @@ test("tracking identifiers use only AS and never fall back to old columns", asyn
   assert.ok(rows.slice(6, 9).every((r) => r.error?.includes("주문번호:79-1")));
   assert.match(rows[9].error!, /텍스트/);
 });
-test("tracking workbook requires AS special-notes header even when old headers exist", async () => {
+test("tracking workbook requires a complete header pair", async () => {
   for (const header of ["", "다른 열"]) {
     await assert.rejects(
       readTrackingWorkbook(
@@ -197,4 +197,54 @@ test("tracking groups multiple numbers, deduplicates and excludes invalid/unpaid
   assert.equal(result.excluded.length, 4);
   assert.equal(result.skippedCount, 1);
   assert.equal(result.rowCount, 9);
+});
+
+test("tracking workbook accepts AJ/G files and preserves leading zeros", async () => {
+  const rows = await readTrackingWorkbook(
+    await workbook((s) => {
+      s.getCell("AS1").value = "";
+      s.getCell("G1").value = "운송장번호";
+      s.getCell("AJ1").value = "특기사항";
+      s.getCell("AJ2").value = "주문번호:79-1";
+      s.getCell("G2").value = "0012-3456";
+      s.getCell("E2").value = "999999";
+    }),
+    "legacy.xlsx",
+  );
+  assert.equal(rows[0].key, "79-1");
+  assert.equal(rows[0].number, "00123456");
+  assert.equal(rows[0].error, undefined);
+});
+
+test("tracking workbook prioritizes AS/E per row and falls back to AJ/G only without a valid AS identifier", async () => {
+  const rows = await readTrackingWorkbook(
+    await workbook((s) => {
+      s.getCell("G1").value = "운송장번호";
+      s.getCell("AJ1").value = "특기사항";
+      [
+        "주문번호:79-1",
+        "",
+        "문 앞",
+        "주문번호:잘못됨",
+        "주문번호:80-1",
+      ].forEach((value, i) => {
+        const row = i + 2;
+        s.getCell(`AS${row}`).value = value;
+        s.getCell(`AJ${row}`).value = "주문번호:99-1";
+        s.getCell(`E${row}`).value = i === 4 ? "invalid" : "000111";
+        s.getCell(`G${row}`).value = "000222";
+      });
+    }),
+    "mixed.xlsx",
+  );
+  assert.deepEqual(
+    rows.map((r) => r.key),
+    ["79-1", "99-1", "99-1", "99-1", "80-1"],
+  );
+  assert.deepEqual(
+    rows.map((r) => r.number),
+    ["000111", "000222", "000222", "000222", "invalid"],
+  );
+  assert.ok(rows.slice(0, 4).every((r) => !r.error));
+  assert.match(rows[4].error!, /송장번호 형식/);
 });
