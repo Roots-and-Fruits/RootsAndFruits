@@ -599,7 +599,7 @@ test("shipping selects tracking template only for the shipment snapshot and incl
     if (trackingNumbers?.length) {
       assert.ok(result.text.includes("택배사: 롯데택배"));
       assert.ok(
-        result.text.includes(`운송장번호: ${trackingNumbers.join(", ")}`),
+        result.text.includes(`운송장번호: ${trackingNumbers.join("\n")}`),
       );
     }
   }

@@ -2741,7 +2741,7 @@ test("Postgres: shipping snapshots all tracking numbers per delivery without bac
     assert.equal(before.length, 2);
     assert.equal(
       aligoVariables(before[0]).송장번호,
-      "001234567890, 009876543210",
+      "001234567890\n009876543210",
     );
     assert.equal(aligoVariables(before[1]).송장번호, "");
     assert.ok(before.every((j) => j.phone === sender.phone));

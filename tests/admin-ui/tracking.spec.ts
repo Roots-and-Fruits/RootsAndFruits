@@ -108,7 +108,7 @@ test("tracking upload previews errors, retries saved requests, replaces numbers 
   await expect(dialog).toContainText("출발 예정이 아닌 배송지 1건");
   await page.screenshot({ path: info.outputPath("tracking-saved.png") });
   await dialog
-    .getByRole("button", { name: "번호만 저장", exact: true })
+    .getByRole("button", { name: "송장번호만 저장", exact: true })
     .click();
   const list = page.getByRole("region", { name: "배송지별 발송 목록" });
   await expect(list).toContainText("001234567890, 001234567891");
@@ -247,7 +247,7 @@ test("tracking API enforces authentication, workbook headers, status and concurr
     .getByRole("button", { name: "정상 건 저장 (1곳)", exact: true })
     .click();
   await expect(page.getByRole("dialog")).toContainText("송장 2개");
-  await page.getByRole("button", { name: "번호만 저장", exact: true }).click();
+  await page.getByRole("button", { name: "송장번호만 저장", exact: true }).click();
   const noOrigin = await page.request.post("/api/admin/tracking/save", {
     data: {},
   });

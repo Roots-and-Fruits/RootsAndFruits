@@ -358,7 +358,7 @@ export function TrackingUpload({
               )}
               <DialogFooter>
                 <Button variant="outline" disabled={busy} onClick={close}>
-                  {!shipped && pending.length ? "번호만 저장" : "닫기"}
+                  {!shipped && pending.length ? "송장번호만 저장" : "닫기"}
                 </Button>
                 {!shipped && pending.length > 0 && (
                   <Button disabled={busy} onClick={ship}>

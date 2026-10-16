@@ -96,6 +96,6 @@ export function aligoVariables(job: NotificationJob): Record<string, string> {
     받는분: line(value.recipientName),
     발송상품: itemText(value.items, value.category),
     택배회사명: "롯데택배",
-    송장번호: value.trackingNumbers.join(", "),
+    송장번호: value.trackingNumbers.join("\n"),
   };
 }
