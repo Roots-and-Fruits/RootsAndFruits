@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { AdminButton as Button } from "./admin-button";
 import {
   Dialog,
@@ -13,11 +13,13 @@ import {
 } from "@/components/ui/dialog";
 export function ConfirmAction({
   label,
+  icon,
   description,
   disabled,
   onConfirm,
 }: {
   label: string;
+  icon?: ReactNode;
   description: string;
   disabled?: boolean;
   onConfirm: () => void | Promise<string | null | void>;
@@ -37,6 +39,7 @@ export function ConfirmAction({
     >
       <DialogTrigger asChild>
         <Button variant="outline" disabled={saving}>
+          {icon}
           {label}
         </Button>
       </DialogTrigger>

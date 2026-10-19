@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { MessageSquare, History } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -157,10 +158,12 @@ export function ShippingDelayAction({
         disabled={disabled || ids.length === 0}
         onClick={start}
       >
+        <MessageSquare aria-hidden="true" />
         배송 지연 알림
       </Button>
       {pending && !open && (
         <Button variant="outline" disabled={disabled} onClick={start}>
+          <History aria-hidden="true" />
           이전 지연 알림 요청 확인
         </Button>
       )}

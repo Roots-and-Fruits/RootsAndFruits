@@ -1,4 +1,5 @@
 "use client";
+import { Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import {
   Dialog,
@@ -163,6 +164,7 @@ export function TrackingUpload({
           setOpen(true);
         }}
       >
+        <Upload aria-hidden="true" />
         송장번호 업로드
       </Button>
       <Dialog
@@ -268,7 +270,9 @@ export function TrackingUpload({
                               <option value="" disabled>
                                 추가 또는 교체를 선택해주세요
                               </option>
-                              <option value="add">새 번호만 추가 (중복 제외)</option>
+                              <option value="add">
+                                새 번호만 추가 (중복 제외)
+                              </option>
                               <option value="replace" disabled={g.incomplete}>
                                 기존 번호 전체 교체
                               </option>
@@ -288,7 +292,8 @@ export function TrackingUpload({
                             새로 추가될 송장번호:{" "}
                             {g.numbers
                               .filter((n) => !g.tracking_numbers.includes(n))
-                              .join(", ") || "없음 (모두 이미 저장된 번호입니다)"}
+                              .join(", ") ||
+                              "없음 (모두 이미 저장된 번호입니다)"}
                           </p>
                         )}
                         {modes[g.id] === "replace" && (

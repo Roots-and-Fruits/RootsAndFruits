@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { FileSpreadsheet, History, RefreshCw, Truck } from "lucide-react";
 import { addDays, dateInSeoul } from "@/features/orders/calculations";
 import { createRequestId } from "@/lib/request-id";
 import {
@@ -166,6 +167,7 @@ export function ShippingWorkspace({
             disabled={disabled}
             onClick={() => setHistoryOpen(true)}
           >
+            <History aria-hidden="true" />
             출력 이력
           </Button>
           <Button
@@ -173,6 +175,7 @@ export function ShippingWorkspace({
             disabled={loading || busy || working}
             onClick={onReload}
           >
+            <RefreshCw aria-hidden="true" />
             새로고침
           </Button>
         </div>
@@ -181,46 +184,59 @@ export function ShippingWorkspace({
         출력 전체 선택: 내일({tomorrow})까지 출발 예정인 {eligible.length}건.
         이후 출발 건은 개별 확인 후 선택할 수 있습니다.
       </p>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          disabled={disabled || !eligible.length}
-          onClick={() => bulk(eligible)}
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div
+          role="group"
+          aria-label="배송지 선택"
+          className="flex flex-wrap gap-2"
         >
-          출력 대기 전체 선택
-        </Button>
-        <Button
-          variant="outline"
-          disabled={disabled || !exported.length}
-          onClick={() => bulk(exported)}
+          <Button
+            variant="outline"
+            disabled={disabled || !eligible.length}
+            onClick={() => bulk(eligible)}
+          >
+            출력 대기 전체 선택
+          </Button>
+          <Button
+            variant="outline"
+            disabled={disabled || !exported.length}
+            onClick={() => bulk(exported)}
+          >
+            발송 대기 전체 선택
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={disabled || !selected.length}
+            onClick={() => bulk([])}
+          >
+            선택 해제
+          </Button>
+        </div>
+        <div
+          role="group"
+          aria-label="선택 배송지 작업"
+          className="ml-auto flex flex-wrap justify-end gap-2"
         >
-          발송 대기 전체 선택
-        </Button>
-        <Button
-          variant="ghost"
-          disabled={disabled || !selected.length}
-          onClick={() => bulk([])}
-        >
-          선택 해제
-        </Button>
-
-        <Button
-          disabled={disabled || !onlyWaiting || overLimit}
-          onClick={exportSelected}
-        >
-          선택 엑셀 출력
-        </Button>
-        <ShippingDelayAction
-          ids={chosen.map((r) => r.delivery.id)}
-          disabled={disabled || overLimit}
-          onBusyChange={setWorking}
-        />
-        <ConfirmAction
-          label="선택 발송 완료"
-          disabled={disabled || !onlyExported || overLimit}
-          description={`선택한 배송지 ${chosen.length}건을 실제 발송했는지 확인해주세요. ${warning}`}
-          onConfirm={() => onShip(selected)}
-        />
+          <Button
+            disabled={disabled || !onlyWaiting || overLimit}
+            onClick={exportSelected}
+          >
+            <FileSpreadsheet aria-hidden="true" />
+            선택 엑셀 출력
+          </Button>
+          <ShippingDelayAction
+            ids={chosen.map((r) => r.delivery.id)}
+            disabled={disabled || overLimit}
+            onBusyChange={setWorking}
+          />
+          <ConfirmAction
+            label="선택 발송 완료"
+            icon={<Truck aria-hidden="true" />}
+            disabled={disabled || !onlyExported || overLimit}
+            description={`선택한 배송지 ${chosen.length}건을 실제 발송했는지 확인해주세요. ${warning}`}
+            onConfirm={() => onShip(selected)}
+          />
+        </div>
       </div>
       {!!chosen.length && (
         <p role="status" className="text-sm font-semibold">
