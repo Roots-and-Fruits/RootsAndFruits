@@ -604,3 +604,52 @@ test("shipping selects tracking template only for the shipment snapshot and incl
     }
   }
 });
+
+test("delay template has no variables and uses registered UM_6360 text without changing legacy templates", async () => {
+  const delayed: AligoTemplate = {
+    ...received,
+    templtCode: "UM_6360",
+    templateEmType: "NONE",
+    templtName: "배송 지연",
+    templtContent: "기상악화로 수확과 발송이 늦어집니다.\n양해 부탁드립니다.",
+    buttons: [],
+  };
+  const job: NotificationJob = {
+    ...receivedJob,
+    event: "delayed",
+    payload: { deliveryIds: [] },
+  };
+  assert.deepEqual(aligoVariables(job), {});
+  const templates = await loadAligoTemplates(config, async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      code: 0,
+      list: [received, shipped, shippedTracking, delayed],
+    }),
+  }));
+  const provider = aligoProvider(config, templates, async (_url, options) => {
+    assert.equal(options.body.get("tpl_code"), "UM_6360");
+    assert.equal(options.body.get("testMode"), "Y");
+    assert.equal(options.body.get("receiver_1"), job.phone);
+    assert.equal(options.body.get("message_1"), delayed.templtContent);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 0, info: { mid: "1", scnt: 1, fcnt: 0 } }),
+    };
+  });
+  const message = provider.prepare(job);
+  assert.equal(message.text, delayed.templtContent);
+  assert.equal(
+    (await provider.send(job.phone, message, job.id)).status,
+    "tested",
+  );
+  assert.throws(
+    () => prepareAligo(job, { ...delayed, templtContent: "#{주문번호}" }),
+    /ALIGO_TEMPLATE_VARIABLE_UNKNOWN/,
+  );
+  const legacy = aligoProvider(config, { received, shipped, shippedTracking });
+  assert.throws(() => legacy.prepare(job), /ALIGO_TEMPLATE_NOT_FOUND/);
+  assert.equal(legacy.prepare(receivedJob).templateCode, "UM_0746");
+});

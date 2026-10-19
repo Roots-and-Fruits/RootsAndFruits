@@ -264,6 +264,7 @@ export function NotificationsAdmin() {
                 </p>
                 <p className="mb-2 text-xs text-muted-foreground">
                   {providerLabel(row.provider)}
+                  {row.event === "delayed" && " · 배송 지연 안내"}
                   {row.test_mode && " · 테스트(미발송)"}
                   {row.prepared_message?.templateCode &&
                     ` · ${row.prepared_message.templateCode}`}

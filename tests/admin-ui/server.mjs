@@ -32,6 +32,7 @@ for (const file of [
   "202610110004_customer_deletion.sql",
   "202610160001_pos_receipt.sql",
   "202610190001_fruit_notices.sql",
+  "202610190002_shipping_delay_notifications.sql",
 ])
   await db.exec(
     await readFile(join(root, "supabase/migrations", file), "utf8"),
@@ -198,6 +199,15 @@ const server = createServer(async (req, res) => {
       }
       return send(res, { user: target });
     }
+    if (
+      url.pathname === "/__test/delay-enable" &&
+      process.env.ADMIN_UI_DELAY_TEST === "true"
+    ) {
+      await db.exec(
+        "update notification_settings set enabled=true,provider='aligo',test_mode=true",
+      );
+      return send(res, { ok: true });
+    }
     if (url.pathname === "/__test/shipping-fixture" && req.method === "POST") {
       // Isolated PGlite only. No production credentials are loaded by this server.
       const count = body.count ?? 120;
@@ -341,6 +351,10 @@ const server = createServer(async (req, res) => {
         "save_delivery_tracking",
         "save_product",
         "save_fruit_notice",
+        "preview_shipping_delay",
+        "queue_shipping_delay",
+        "claim_shipping_delay",
+        "prepare_order_notification",
         "reorder_products",
         "save_settings",
         "change_checkout",
@@ -363,6 +377,16 @@ const server = createServer(async (req, res) => {
         );
       const keys = Object.keys(body);
       const expressions = keys.map((k, i) => `${k} => $${i + 1}`);
+      if (rpc === "claim_shipping_delay") {
+        const claimed = await db.query(
+          `select to_jsonb(n) as result from ${rpc}(${expressions.join(",")}) n`,
+          Object.values(body),
+        );
+        return send(
+          res,
+          claimed.rows.map((r) => r.result),
+        );
+      }
       const rows = await db.query(
         `select ${rpc}(${expressions.join(",")}) as result`,
         Object.values(body),
@@ -379,6 +403,7 @@ const server = createServer(async (req, res) => {
       ![
         "products",
         "fruit_notices",
+        "shipping_delay_requests",
         "delivery_settings",
         "shipping_settings",
         "checkouts",
@@ -393,6 +418,36 @@ const server = createServer(async (req, res) => {
       !["products", "delivery_settings", "fruit_notices"].includes(table)
     )
       return send(res, { message: "forbidden" }, 403);
+    if (
+      req.method === "PATCH" &&
+      table === "order_notifications" &&
+      auth === serviceKey
+    ) {
+      const allowed = [
+        "status",
+        "error_code",
+        "updated_at",
+        "provider_id",
+        "provider_code",
+      ];
+      const entries = Object.entries(body).filter(([key]) =>
+        allowed.includes(key),
+      );
+      const filters = [...url.searchParams].filter(
+        ([key, value]) =>
+          ["id", "status", "attempts", "updated_at"].includes(key) &&
+          (value.startsWith("eq.") || value.startsWith("lt.")),
+      );
+      const values = [
+        ...entries.map(([, value]) => value),
+        ...filters.map(([, value]) => value.slice(3)),
+      ];
+      await db.query(
+        `update order_notifications set ${entries.map(([key], i) => `${key}=$${i + 1}`).join(",")} where ${filters.map(([key, value], i) => `${key}${value.startsWith("lt.") ? "<" : "="}$${entries.length + i + 1}`).join(" and ")}`,
+        values,
+      );
+      return send(res, null);
+    }
     let data;
     if (table === "checkouts")
       data = (
@@ -475,6 +530,16 @@ const mockFetch = join(dir, "mock-kakao.cjs");
 await writeFile(
   mockFetch,
   `
+if (process.env.ADMIN_UI_DELAY_TEST === "true") {
+  const { MockAgent, setGlobalDispatcher } = require("undici");
+  const mock = new MockAgent();
+  mock.disableNetConnect();
+  mock.enableNetConnect(host => host.startsWith("127.0.0.1:") || host.startsWith("localhost:"));
+  const pool = mock.get("https://kakaoapi.aligo.in");
+  pool.intercept({ path: "/akv10/template/list/", method: "POST" }).reply(200, { code: 0, list: ["UM_0746","UM_0737","UM_3439","UM_6360"].map(templtCode => ({templtCode,templtName:"가상 지연 안내",templtContent:"기상악화로 수확 및 발송이 지연됩니다.",templateEmType:"NONE",status:"A",inspStatus:"APR"})) }).persist();
+  pool.intercept({ path: "/akv10/alimtalk/send/", method: "POST" }).reply(200, { code: 0, info: { mid: "123", scnt: 1, fcnt: 0 } }).persist();
+  setGlobalDispatcher(mock);
+}
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (url, init) => {
   if (String(url) === "https://kapi.kakao.com/v1/user/unlink") {
@@ -509,7 +574,19 @@ const next = spawn(
       SUPABASE_SERVICE_ROLE_KEY: "",
       NEXT_TELEMETRY_DISABLED: "1",
       ENABLE_ORDER_PREVIEW: "true",
-      ALIGO_ENABLED: "false",
+      ALIGO_ENABLED:
+        process.env.ADMIN_UI_DELAY_TEST === "true" ? "true" : "false",
+      ...(process.env.ADMIN_UI_DELAY_TEST === "true"
+        ? {
+            ADMIN_UI_DELAY_TEST: "true",
+            ALIGO_API_KEY: "isolated-fake",
+            ALIGO_USER_ID: "isolated-fake",
+            ALIGO_SENDER_KEY: "isolated-fake",
+            ALIGO_SENDER_NUMBER: "01011112222",
+            ALIGO_TEST_MODE: "true",
+            FIXIE_URL: "",
+          }
+        : {}),
       KAKAO_ADMIN_KEY: "isolated-kakao-key",
       NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --require=${mockFetch}`,
     },

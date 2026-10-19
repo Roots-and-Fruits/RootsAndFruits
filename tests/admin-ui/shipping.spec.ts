@@ -103,11 +103,13 @@ test("shipping loads every active delivery, selects by date and confirms mixed/f
     91,
   );
   await row(page, "발송수령인124").getByRole("checkbox").click();
-  await expect(page.getByRole("dialog")).toContainText("기존 선택을 해제");
-  await page.getByRole("button", { name: "확인 후 선택", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(list(page).getByRole("checkbox", { checked: true })).toHaveCount(
-    1,
+    92,
   );
+  await expect(
+    page.getByRole("button", { name: "선택 발송 완료", exact: true }),
+  ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "선택 엑셀 출력", exact: true }),
   ).toBeDisabled();

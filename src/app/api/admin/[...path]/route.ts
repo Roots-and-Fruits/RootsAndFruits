@@ -32,6 +32,7 @@ import { shippingFilename, shippingWorkbook } from "@/features/admin/excel";
 import { trackingSaveSchema } from "@/features/admin/tracking";
 import {
   scheduleNotifications,
+  processShippingDelay,
   notificationsReady,
   notificationRuntime,
   checkNotificationConnection,
@@ -310,7 +311,82 @@ export async function POST(request: Request, context: Context) {
     if (!staff) throw new HttpError("관리자 로그인이 필요합니다.", 401);
     const db = createServiceClient();
     let result;
-    if (path[0] === "notifications") {
+    if (path[0] === "shipping-delay") {
+      if (path[1] === "preview") {
+        result = await db.rpc("preview_shipping_delay", {
+          p_ids: idsSchema.parse(body.ids),
+          p_actor: staff.id,
+        });
+        if (!result.error)
+          result.data = {
+            ...result.data,
+            testMode: notificationRuntime().testMode,
+          };
+      } else if (path[1] === "queue") {
+        if (!notificationsReady())
+          throw new HttpError("서버의 알림 발송 설정을 확인해주세요.");
+        const expected = z
+          .array(
+            z.object({
+              phone: z.string().regex(/^01\d{9}$/),
+              latestId: uuid.nullable(),
+            }),
+          )
+          .min(1)
+          .max(1000)
+          .parse(body.expected);
+        result = await db.rpc("queue_shipping_delay", {
+          p_request: uuid.parse(body.requestId),
+          p_ids: idsSchema.parse(body.ids),
+          p_expected: expected,
+          p_test_mode: notificationRuntime().testMode,
+          p_actor: staff.id,
+        });
+      } else if (path[1] === "process") {
+        const id = uuid.parse(body.requestId);
+        const requestRow = await db
+          .from("shipping_delay_requests")
+          .select("id,test_mode")
+          .eq("id", id)
+          .single();
+        checkDb(requestRow.error);
+        const runtime = notificationRuntime();
+        if (!runtime.ready || requestRow.data!.test_mode !== runtime.testMode)
+          throw new HttpError(
+            "현재 알림 연결을 확인해주세요. 다른 모드의 요청은 재발송하지 않습니다.",
+          );
+        const settings = await db
+          .from("notification_settings")
+          .select("enabled,test_mode,provider")
+          .eq("id", 1)
+          .single();
+        checkDb(settings.error);
+        if (
+          !settings.data?.enabled ||
+          settings.data?.provider !== "aligo" ||
+          settings.data?.test_mode !== runtime.testMode
+        )
+          throw new HttpError("알림톡 연결과 발송 설정을 확인해주세요.");
+        await processShippingDelay(id);
+        const jobs = await db
+          .from("order_notifications")
+          .select("status")
+          .eq("delay_request_id", id);
+        checkDb(jobs.error);
+        const counts: Record<string, number> = {};
+        for (const job of jobs.data ?? [])
+          counts[job.status] = (counts[job.status] ?? 0) + 1;
+        return Response.json(
+          { counts, testMode: requestRow.data!.test_mode },
+          { headers: { "Cache-Control": "no-store" } },
+        );
+      } else throw new HttpError("찾을 수 없는 요청입니다.", 404);
+      if (result.error && ["PGRST202", "42883"].includes(result.error.code))
+        throw new HttpError(
+          "배송 지연 알림 DB 업데이트가 필요합니다. 202610190002_shipping_delay_notifications.sql을 적용해주세요.",
+          503,
+        );
+    } else if (path[0] === "notifications") {
       if (path[1] === "configure") {
         const enabled = z.boolean().parse(body.enabled);
         if (enabled && !notificationsReady())

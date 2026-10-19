@@ -14,6 +14,7 @@ import { AdminButton as Button } from "./admin-button";
 import { adminRequest } from "./client";
 import { ConfirmAction } from "./confirm-action";
 import { ExportHistory } from "./export-history";
+import { ShippingDelayAction } from "./shipping-delay-action";
 import { TrackingUpload } from "./tracking-upload";
 import { ShippingList } from "./order-lists";
 import type { Checkout } from "./schema";
@@ -49,7 +50,6 @@ export function ShippingWorkspace({
   const [confirmedFutureIds, setConfirmedFutureIds] = useState<string[]>([]);
   const [pending, setPending] = useState<{
     row: ShippingRow;
-    replace: boolean;
     future: boolean;
   } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -72,19 +72,21 @@ export function ShippingWorkspace({
   }, [serverTime]);
   const disabled = loading || failed || busy || working;
   const chosen = rows.filter((r) => selected.includes(r.delivery.id));
-  const selectedStatus = chosen[0]?.delivery.status;
+  const onlyWaiting =
+    chosen.length > 0 && chosen.every((r) => r.delivery.status === "waiting");
+  const onlyExported =
+    chosen.length > 0 && chosen.every((r) => r.delivery.status === "exported");
   const overLimit = chosen.length > shippingRequestLimit;
   const tomorrow = addDays(today, 1);
   const eligible = rows.filter((r) => canBulkExport(r.delivery, today));
   const waiting = rows.filter((r) => r.delivery.status === "waiting");
   const exported = rows.filter((r) => r.delivery.status === "exported");
-  const warning =
-    selectedStatus === "exported"
-      ? departureWarning(
-          chosen.map((r) => r.delivery.processing_date),
-          today,
-        )
-      : "";
+  const warning = onlyExported
+    ? departureWarning(
+        chosen.map((r) => r.delivery.processing_date),
+        today,
+      )
+    : "";
 
   function choose(id: string, checked: boolean) {
     if (disabled) return;
@@ -95,11 +97,10 @@ export function ShippingWorkspace({
     }
     const row = rows.find((r) => r.delivery.id === id);
     if (!row) return;
-    const replace = !!selectedStatus && row.delivery.status !== selectedStatus;
     const future =
       row.delivery.status === "waiting" &&
       row.delivery.processing_date > tomorrow;
-    if (replace || future) setPending({ row, replace, future });
+    if (future) setPending({ row, future });
     else setSelected((old) => [...new Set([...old, id])]);
   }
   function bulk(items: ShippingRow[]) {
@@ -155,7 +156,11 @@ export function ShippingWorkspace({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <TrackingUpload disabled={disabled} today={today} onReload={onReload} />
+          <TrackingUpload
+            disabled={disabled}
+            today={today}
+            onReload={onReload}
+          />
           <Button
             variant="outline"
             disabled={disabled}
@@ -198,23 +203,31 @@ export function ShippingWorkspace({
         >
           선택 해제
         </Button>
+
         <Button
-          disabled={disabled || selectedStatus !== "waiting" || overLimit}
+          disabled={disabled || !onlyWaiting || overLimit}
           onClick={exportSelected}
         >
           선택 엑셀 출력
         </Button>
+        <ShippingDelayAction
+          ids={chosen.map((r) => r.delivery.id)}
+          disabled={disabled || overLimit}
+          onBusyChange={setWorking}
+        />
         <ConfirmAction
           label="선택 발송 완료"
-          disabled={disabled || selectedStatus !== "exported" || overLimit}
+          disabled={disabled || !onlyExported || overLimit}
           description={`선택한 배송지 ${chosen.length}건을 실제 발송했는지 확인해주세요. ${warning}`}
           onConfirm={() => onShip(selected)}
         />
       </div>
       {!!chosen.length && (
         <p role="status" className="text-sm font-semibold">
-          {selectedStatus === "waiting" ? "출력 대기" : "발송 대기"} 배송지{" "}
-          {chosen.length}건 선택
+          배송지 {chosen.length}건 선택 · 출력 대기{" "}
+          {chosen.filter((r) => r.delivery.status === "waiting").length}건 ·
+          발송 대기{" "}
+          {chosen.filter((r) => r.delivery.status === "exported").length}건
         </p>
       )}
       {warning && (
@@ -265,8 +278,6 @@ export function ShippingWorkspace({
             <DialogDescription>
               {pending?.future &&
                 `${pending.row.checkout.order_number}번 · ${pending.row.delivery.recipient.name}: ${pending.row.delivery.processing_date} 출발 예정입니다. 내일(${tomorrow}) 이후 출발 건을 미리 출력합니다. 출발 예정일은 변경되지 않습니다. `}
-              {pending?.replace &&
-                "출력 대기와 발송 대기는 함께 처리할 수 없습니다. 기존 선택을 해제하고 이 배송지를 선택합니다."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -276,12 +287,10 @@ export function ShippingWorkspace({
             <Button
               onClick={() => {
                 if (!pending) return;
-                const { row, replace, future } = pending;
-                setSelected((old) => [
-                  ...new Set([...(replace ? [] : old), row.delivery.id]),
-                ]);
+                const { row, future } = pending;
+                setSelected((old) => [...new Set([...old, row.delivery.id])]);
                 setConfirmedFutureIds((old) => [
-                  ...(replace ? [] : old),
+                  ...old,
                   ...(future ? [row.delivery.id] : []),
                 ]);
                 setPending(null);

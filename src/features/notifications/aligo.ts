@@ -92,9 +92,9 @@ export const aligoTemplateSchema = z.object({
 });
 export type AligoTemplate = z.infer<typeof aligoTemplateSchema>;
 export type AligoTemplates = Record<
-  NotificationJob["event"] | "shippedTracking",
+  "received" | "shipped" | "shippedTracking",
   AligoTemplate
->;
+> & { delayed?: AligoTemplate };
 const code = z
   .union([z.number().int(), z.string().regex(/^-?\d+$/)])
   .transform(String);
@@ -179,7 +179,20 @@ export async function loadAligoTemplates(
         throw new NotificationError("ALIGO_TEMPLATE_NOT_APPROVED");
       return template;
     });
+    // A missing delay template must not block existing receipt/shipping messages.
+    const delayedMatches = (reply.data.list ?? [])
+      .map((item) => aligoTemplateSchema.safeParse(item))
+      .filter((item) => item.success && item.data.templtCode === "UM_6360");
+    const delayed =
+      delayedMatches.length === 1 && delayedMatches[0].success
+        ? delayedMatches[0].data
+        : undefined;
     return {
+      ...(delayed &&
+      (config.testMode ||
+        (delayed.inspStatus === "APR" && delayed.status !== "S"))
+        ? { delayed }
+        : {}),
       received: templates[0],
       shipped: templates[1],
       shippedTracking: templates[2],
@@ -277,11 +290,12 @@ export function aligoProvider(
   return {
     name: "aligo",
     testMode: config.testMode,
-    prepare: (job) =>
-      prepareAligo(
-        job,
-        templates[shippingHasTracking(job) ? "shippedTracking" : job.event],
-      ),
+    prepare: (job) => {
+      const template =
+        templates[shippingHasTracking(job) ? "shippedTracking" : job.event];
+      if (!template) throw new NotificationError("ALIGO_TEMPLATE_NOT_FOUND");
+      return prepareAligo(job, template);
+    },
     async send(to, message): Promise<SendResult> {
       if (!/^01\d{9}$/.test(to))
         return { status: "failed", errorCode: "INVALID_PHONE" };

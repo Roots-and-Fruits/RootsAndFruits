@@ -3,7 +3,7 @@ import { savedItemLabel } from "@/features/admin/schema";
 
 export type NotificationJob = {
   id: string;
-  event: "received" | "shipped";
+  event: "received" | "shipped" | "delayed";
   phone: string;
   payload: unknown;
   attempts: number;
@@ -69,6 +69,7 @@ export function shippingHasTracking(job: NotificationJob): boolean {
 }
 
 export function aligoVariables(job: NotificationJob): Record<string, string> {
+  if (job.event === "delayed") return {};
   if (job.event === "received") {
     const value = received
       .extend({ category, deliveries: z.array(delivery).min(1) })

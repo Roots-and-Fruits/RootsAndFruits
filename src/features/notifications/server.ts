@@ -37,7 +37,7 @@ export async function checkNotificationConnection() {
   return { ...notificationRuntime(), templates };
 }
 
-async function processNotifications() {
+async function processNotifications(requestId?: string) {
   const runtime = notificationRuntime();
   if (!runtime.ready) return 0;
   const db = createServiceClient();
@@ -64,13 +64,15 @@ async function processNotifications() {
     .lt("updated_at", new Date(Date.now() - 5 * 60_000).toISOString());
   if (interruptedError) throw new Error("Notification recovery failed");
   // Empty event-triggered runs must not consume limited external API requests.
-  const { data: pending, error: pendingError } = await db
+  let pendingQuery = db
     .from("order_notifications")
     .select("id")
     .eq("status", "pending")
     .eq("provider", runtime.provider)
     .eq("test_mode", runtime.testMode)
     .limit(1);
+  if (requestId) pendingQuery = pendingQuery.eq("delay_request_id", requestId);
+  const { data: pending, error: pendingError } = await pendingQuery;
   if (pendingError) throw new Error("Notification queue lookup failed");
   if (!pending?.length) return 0;
   // Template/auth failures occur before claiming jobs, so the queue stays retryable.
@@ -78,11 +80,15 @@ async function processNotifications() {
   return dispatchNotifications(
     {
       async claim() {
-        const { data, error } = await db.rpc("claim_notification_delivery", {
-          p_limit: 3,
-          p_provider: provider.name,
-          p_test_mode: provider.testMode,
-        });
+        const { data, error } = await db.rpc(
+          requestId ? "claim_shipping_delay" : "claim_notification_delivery",
+          {
+            ...(requestId ? { p_request: requestId } : {}),
+            p_limit: 3,
+            p_provider: provider.name,
+            p_test_mode: provider.testMode,
+          },
+        );
         if (error) throw new Error("Notification claim failed");
         return (data ?? []) as NotificationJob[];
       },
@@ -128,4 +134,8 @@ export function scheduleNotifications() {
       );
     }
   });
+}
+
+export async function processShippingDelay(requestId: string) {
+  return processNotifications(requestId);
 }
