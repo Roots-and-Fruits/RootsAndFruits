@@ -4,6 +4,7 @@ export type Product = {
   id: string;
   category: CatalogCategory;
   fruitType: string | null;
+  fruitNotice?: string;
   weightGrams: number | null;
   description: string;
   price: number;

@@ -22,6 +22,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { FruitNoticeEditor, useFruitNotices } from "./fruit-notices";
 import { GripVertical } from "lucide-react";
 import { AdminButton as Button } from "./admin-button";
 import { adminProductLabel, type AdminProduct } from "./schema";
@@ -42,11 +43,13 @@ function SortableItem({
   disabled,
   children,
   group = false,
+  headerContent,
 }: {
   id: string;
   label: string;
   disabled: boolean;
   group?: boolean;
+  headerContent?: ReactNode;
   children: ReactNode;
 }) {
   const {
@@ -85,9 +88,12 @@ function SortableItem({
       {group ? (
         <>
           {/* Group handle does not intercept item drag gestures. */}
-          <div className="flex items-center gap-2 rounded-t-xl border-b bg-secondary/50 px-3 py-2">
-            {handle}
-            <h2 className="font-semibold">{id}</h2>
+          <div className="rounded-t-xl border-b bg-secondary/50 px-3 py-2">
+            <div className="flex items-center gap-2">
+              {handle}
+              <h2 className="shrink-0 font-semibold">{id}</h2>
+              {headerContent}
+            </div>
           </div>
           {children}
         </>
@@ -170,6 +176,7 @@ export function ProductSortList({
   onEdit: (product: AdminProduct) => void;
 }) {
   const experience = category === "experience";
+  const { notices, error: noticeError } = useFruitNotices(!experience);
   const initial = groupProducts(products);
   const [groups, setGroups] = useState(initial);
   const [busy, setBusy] = useState(false),
@@ -278,6 +285,16 @@ export function ProductSortList({
               id={g.fruit}
               label={`${g.fruit} 그룹 순서 이동`}
               disabled={disabled || busy}
+              headerContent={
+                !experience && (
+                  <FruitNoticeEditor
+                    fruit={g.fruit}
+                    notices={notices}
+                    error={noticeError}
+                    disabled={disabled || busy || dirty}
+                  />
+                )
+              }
               group
             >
               <ReorderArea

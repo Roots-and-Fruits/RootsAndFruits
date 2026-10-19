@@ -31,6 +31,7 @@ for (const file of [
   "202610110003_notification_recipient_phone.sql",
   "202610110004_customer_deletion.sql",
   "202610160001_pos_receipt.sql",
+  "202610190001_fruit_notices.sql",
 ])
   await db.exec(
     await readFile(join(root, "supabase/migrations", file), "utf8"),
@@ -339,6 +340,7 @@ const server = createServer(async (req, res) => {
         "preview_delivery_tracking",
         "save_delivery_tracking",
         "save_product",
+        "save_fruit_notice",
         "reorder_products",
         "save_settings",
         "change_checkout",
@@ -376,6 +378,7 @@ const server = createServer(async (req, res) => {
     if (
       ![
         "products",
+        "fruit_notices",
         "delivery_settings",
         "shipping_settings",
         "checkouts",
@@ -387,7 +390,7 @@ const server = createServer(async (req, res) => {
       return send(res, {}, 404);
     if (
       auth !== serviceKey &&
-      !["products", "delivery_settings"].includes(table)
+      !["products", "delivery_settings", "fruit_notices"].includes(table)
     )
       return send(res, { message: "forbidden" }, 403);
     let data;
@@ -404,7 +407,7 @@ const server = createServer(async (req, res) => {
     else
       data = (
         await db.query(
-          `select * from ${table} order by ${table === "products" ? "sort_order,id" : "id"}`,
+          `select * from ${table} order by ${table === "products" ? "sort_order,id" : table === "fruit_notices" ? "fruit_type" : "id"}`,
         )
       ).rows;
     for (const [field, value] of url.searchParams) {

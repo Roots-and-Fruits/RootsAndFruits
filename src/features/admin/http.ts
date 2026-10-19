@@ -79,3 +79,17 @@ export function checkProductSave(
   }
   checkDb(error);
 }
+
+export function checkFruitNoticeDb(
+  error: { message: string; code?: string } | null,
+) {
+  if (
+    error &&
+    ["42P01", "PGRST205", "PGRST202", "42883"].includes(error.code ?? "")
+  )
+    throw new HttpError(
+      "과일별 안내사항 DB 업데이트가 필요합니다. 202610190001_fruit_notices.sql을 적용해주세요.",
+      503,
+    );
+  checkDb(error);
+}

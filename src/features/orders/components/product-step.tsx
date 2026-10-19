@@ -83,9 +83,16 @@ export function ProductStep({
           {[...groups].map(([fruit, group]) => (
             <section key={fruit} aria-label={fruit}>
               {!experience && (
-                <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
-                  {fruit}
-                </h3>
+                <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h3 className="shrink-0 text-base font-bold text-foreground">
+                    {fruit}
+                  </h3>
+                  {group[0]?.fruitNotice && (
+                    <p className="min-w-0 whitespace-pre-wrap break-words text-base font-medium leading-6 text-primary">
+                      {group[0].fruitNotice}
+                    </p>
+                  )}
+                </div>
               )}
               <div className="divide-y divide-border rounded-xl border border-border">
                 {group.map((product) => {

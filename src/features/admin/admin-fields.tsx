@@ -35,3 +35,18 @@ export function AdminSelect({ className, ...props }: ComponentProps<"select">) {
     />
   );
 }
+
+export function AdminTextarea({
+  className,
+  ...props
+}: ComponentProps<"textarea">) {
+  return (
+    <textarea
+      className={cn(
+        "block w-full min-w-0 rounded-lg border border-input bg-background px-3 py-2 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 lg:text-sm",
+        className,
+      )}
+      {...props}
+    />
+  );
+}

@@ -17,6 +17,7 @@ import {
   apiError,
   checkDb,
   checkProductSave,
+  checkFruitNoticeDb,
   HttpError,
 } from "@/features/admin/http";
 import {
@@ -120,6 +121,13 @@ async function readAdmin(
         },
         { headers: { "Cache-Control": "private, no-store" } },
       );
+    }
+    if (path[0] === "fruit-notices") {
+      const { data, error } = await db
+        .from("fruit_notices")
+        .select("fruit_type, notice");
+      checkFruitNoticeDb(error);
+      return Response.json(data, { headers: { "Cache-Control": "no-store" } });
     }
     if (path[0] === "products") {
       const { data, error } = await timing.measure("db_products", () =>
@@ -346,6 +354,22 @@ export async function POST(request: Request, context: Context) {
           p_actor: staff.id,
         });
       } else throw new HttpError("찾을 수 없는 요청입니다.", 404);
+    } else if (path[0] === "fruit-notices") {
+      const value = z
+        .object({
+          fruit_type: z.string().trim().min(1).max(80),
+          notice: z
+            .string()
+            .trim()
+            .max(500, "안내사항은 500자 이하로 입력해주세요."),
+        })
+        .parse(body);
+      result = await db.rpc("save_fruit_notice", {
+        p_fruit: value.fruit_type,
+        p_notice: value.notice,
+        p_actor: staff.id,
+      });
+      checkFruitNoticeDb(result.error);
     } else if (path[0] === "products" && path[1] === "order") {
       const value = z
         .object({

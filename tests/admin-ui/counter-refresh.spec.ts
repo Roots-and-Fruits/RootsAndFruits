@@ -294,3 +294,64 @@ test("counter pauses for detail/payment/reorder and hidden tabs, then reloads on
   await expect(button).toContainText("10초");
   expect(calls).toBe(baseline + 1);
 });
+
+test("counter distinguishes fully shipped orders from paid and partially shipped orders", async ({
+  page,
+}, info) => {
+  const orders = Array.from({ length: 7 }, (_, i) => makeOrder(101 + i));
+  for (const order of orders) {
+    order.status = "paid";
+    order.payment_method = "card";
+  }
+  orders[0].deliveries[0].status = "shipped";
+  orders[1].deliveries[0].status = "shipped";
+  orders[1].deliveries.push({
+    ...orders[1].deliveries[0],
+    id: "partial",
+    position: 2,
+    status: "exported",
+  });
+  orders[2].deliveries[0].status = "exported";
+  orders[3].status = "pending";
+  orders[3].payment_method = null;
+  orders[4].status = "cancelled";
+  orders[4].deliveries[0].status = "shipped";
+  orders[5].deliveries = [];
+  orders[6].deliveries[0].status = "shipped";
+  orders[6].deliveries.push({
+    ...orders[6].deliveries[0],
+    id: "all-shipped",
+    position: 2,
+  });
+  await page.route("**/api/admin/orders?*", (route) =>
+    route.fulfill({ json: { orders, count: orders.length } }),
+  );
+  await page.goto("/namu-admin/login");
+  await page.getByLabel("아이디", { exact: true }).fill("owner");
+  await page.getByLabel("비밀번호", { exact: true }).fill("test-password-123");
+  await page
+    .getByRole("button", { name: "관리자 로그인", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/namu-admin\/counter/, { timeout: 20000 });
+  const row = (number: number) =>
+    page.getByRole("button", {
+      name: `${number}번 갱신고객${number} 주문 상세`,
+    });
+  for (const number of [101, 107]) {
+    await expect(row(number)).toContainText("발송 완료 · 카드");
+    await expect(row(number)).not.toContainText("결제 완료");
+  }
+  for (const number of [102, 103, 106]) {
+    await expect(row(number)).toContainText("결제 완료 · 카드");
+    await expect(row(number)).not.toContainText("발송 완료");
+  }
+  await expect(row(104)).toContainText("결제 대기");
+  await expect(row(105)).toContainText("취소 · 카드");
+  await expect(row(105)).not.toContainText("발송 완료");
+  await page.screenshot({
+    path: info.outputPath("counter-shipped-status.png"),
+    fullPage: true,
+  });
+  await page.goto("/namu-admin/orders");
+  await expect(row(101)).toContainText("결제 완료 · 카드");
+});

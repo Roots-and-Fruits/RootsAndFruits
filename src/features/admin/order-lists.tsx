@@ -56,22 +56,27 @@ function OrderList({
 function PaymentStatus({
   status,
   method,
+  shipped = false,
 }: {
   status: Checkout["status"];
   method: Checkout["payment_method"];
+  shipped?: boolean;
 }) {
+  const completed = status === "paid" && shipped;
   return (
     <span
       className={cn(
         "inline-flex w-fit items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-bold",
-        status === "paid"
-          ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-          : status === "cancelled"
-            ? "border-red-300 bg-red-100 text-red-800"
-            : "border-amber-300 bg-amber-100 text-amber-900",
+        completed
+          ? "border-sky-300 bg-sky-100 text-sky-900"
+          : status === "paid"
+            ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+            : status === "cancelled"
+              ? "border-red-300 bg-red-100 text-red-800"
+              : "border-amber-300 bg-amber-100 text-amber-900",
       )}
     >
-      {stateLabel[status]}
+      {completed ? stateLabel.shipped : stateLabel[status]}
       {(status === "paid" || (status === "cancelled" && method)) && (
         <span> · {method ? paymentMethodLabels[method] : "방식 미기록"}</span>
       )}
@@ -132,7 +137,7 @@ export function CheckoutList({
         "상품 · 수량",
         "배송지",
         "결제금액",
-        "결제 상태",
+        counter ? "결제·발송 상태" : "결제 상태",
         ...(!counter ? ["발송 현황", "송장번호"] : []),
       ]}
     >
@@ -184,6 +189,13 @@ export function CheckoutList({
               <PaymentStatus
                 status={order.status}
                 method={order.payment_method}
+                shipped={
+                  counter &&
+                  order.deliveries.length > 0 &&
+                  order.deliveries.every(
+                    (delivery) => delivery.status === "shipped",
+                  )
+                }
               />
             </span>
             {!counter && (

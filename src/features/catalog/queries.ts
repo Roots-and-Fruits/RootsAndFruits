@@ -34,7 +34,7 @@ export async function getCatalog(
   if (!getSupabaseConfig()) return unavailable;
   try {
     const supabase = await createClient();
-    const [catalog, settings] = await Promise.all([
+    const [catalog, settings, notices] = await Promise.all([
       supabase
         .from("products")
         .select(
@@ -49,14 +49,25 @@ export async function getCatalog(
         .select("max_days, bundle_discount")
         .eq("id", 1)
         .maybeSingle(),
+      category === "product"
+        ? supabase.from("fruit_notices").select("fruit_type, notice")
+        : Promise.resolve({ data: [], error: null }),
     ]);
-    if (catalog.error || settings.error) return unavailable;
+    // Keep the existing catalog usable while the additive migration is pending.
+    const noticesMissing =
+      notices.error && ["42P01", "PGRST205"].includes(notices.error.code);
+    if (catalog.error || settings.error || (notices.error && !noticesMissing))
+      return unavailable;
     const parsed = z.array(rowSchema).safeParse(catalog.data);
     if (!parsed.success) return unavailable;
+    const noticeByFruit = new Map<string, string>(
+      (notices.data ?? []).map((row) => [row.fruit_type, row.notice]),
+    );
     const products: Product[] = parsed.data.map((row) => ({
       id: row.id,
       category: row.category,
       fruitType: row.fruit_type,
+      fruitNotice: noticeByFruit.get(row.fruit_type ?? ""),
       weightGrams: row.weight_grams,
       description: row.description,
       price: row.price,
