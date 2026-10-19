@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { AdminButton as Button } from "./admin-button";
 import { adminRequest } from "./client";
+import { ExportBatchSummary } from "./export-batch-summary";
 import { ConfirmAction } from "./confirm-action";
 import { stateLabel, type ExportBatch } from "./schema";
 import { departureWarning, shippingRequestLimit } from "./shipping-work";
@@ -113,6 +114,7 @@ export function ExportHistory({
                     · 배송지 {batch.export_members.length}건 · 발송 대기{" "}
                     {remaining.length}건 · {batch.created_by}
                   </p>
+                  <ExportBatchSummary id={batch.id} />
                   <details className="text-sm">
                     <summary>포함 주문 확인</summary>
                     <ul className="mt-2 space-y-1">

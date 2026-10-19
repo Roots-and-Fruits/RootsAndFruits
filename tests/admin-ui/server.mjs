@@ -252,7 +252,7 @@ const server = createServer(async (req, res) => {
         select id,2,'{"name":"발송된 다른 배송지","phone":"01012345678","postalCode":"00000","address":"가상 주소","addressDetail":""}',
           'regular','2026-01-02','2026-01-01',0,'shipped' from checkouts where request_payload->>'fixture'='1';
         insert into order_items(delivery_id,product_id,label,weight_grams,unit_price,quantity,bundle_eligible,inventory_deducted)
-        select id,'10000000-0000-4000-8000-000000000002','가상 상품',3000,10000,1,false,false from deliveries;`);
+        select id,'10000000-0000-4000-8000-000000000002','감귤 3kg · 가상 상품',3000,10000,1,false,false from deliveries;`);
       const ids = (
         await db.query(
           `select d.id from deliveries d join checkouts c on c.id=d.checkout_id
@@ -410,6 +410,7 @@ const server = createServer(async (req, res) => {
         "shipping_settings",
         "checkouts",
         "export_batches",
+        "export_members",
         "notification_settings",
         "order_notifications",
       ].includes(table)
@@ -455,6 +456,12 @@ const server = createServer(async (req, res) => {
       data = (
         await db.query("select list_checkouts('{}',0,$1) as result", [staff])
       ).rows[0].result.orders;
+    else if (table === "export_members")
+      data = (
+        await db.query(
+          `select to_jsonb(m)||jsonb_build_object('deliveries',jsonb_build_object('order_items',(select jsonb_agg(to_jsonb(i)) from order_items i where i.delivery_id=d.id),'checkouts',jsonb_build_object('category',c.category))) as row from export_members m join deliveries d on d.id=m.delivery_id join checkouts c on c.id=d.checkout_id`,
+        )
+      ).rows.map((r) => r.row);
     else if (table === "export_batches")
       data = (
         await db.query(

@@ -147,13 +147,18 @@ test("shipping loads every active delivery, selects by date and confirms mixed/f
   await expect(
     page.getByRole("link", { name: "재다운로드", exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole("button", { name: "준비 물량 확인", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("총 준비 중량 6kg");
+  await expect(page.getByRole("dialog")).toContainText("감귤");
   await page.screenshot({ path: info.outputPath("shipping-history.png") });
 });
 
 test("future export requires acknowledgement, failed export retries once and stale actions stay safe", async ({
   page,
   request,
-}) => {
+}, info) => {
   const fixture = await seed(request, 8);
   await login(page);
   const futureOrder = fixture.orders.find(
@@ -182,13 +187,28 @@ test("future export requires acknowledgement, failed export retries once and sta
   await page
     .getByRole("button", { name: "선택 엑셀 출력", exact: true })
     .click();
-  await expect(page.locator("main").getByRole("alert")).toContainText(
-    "테스트 일시 오류",
-  );
-  await expect(row(page, "발송수령인3").getByRole("checkbox")).toBeChecked();
-  const download = page.waitForEvent("download");
+  const confirmation = page.getByRole("dialog", {
+    name: "엑셀 출력 전 준비 물량 확인",
+  });
+  await expect(confirmation).toContainText("총 준비 중량 3kg");
+  await expect(confirmation).toContainText("상품별 상세");
+  await page.screenshot({ path: info.outputPath("export-confirmation.png") });
+  expect(calls).toHaveLength(0);
+  await page.getByRole("button", { name: "돌아가기", exact: true }).click();
+  expect(calls).toHaveLength(0);
   await page
     .getByRole("button", { name: "선택 엑셀 출력", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "확인 후 엑셀 출력", exact: true })
+    .click();
+  await expect(confirmation.getByRole("alert")).toContainText(
+    "테스트 일시 오류",
+  );
+  await expect(confirmation).toContainText("배송지 1건");
+  const download = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "확인 후 엑셀 출력", exact: true })
     .click();
   expect((await download).suggestedFilename()).toMatch(
     /^택배송장_\d{8}_\d{6}\.xlsx$/,
@@ -225,9 +245,11 @@ test("future export requires acknowledgement, failed export retries once and sta
   await page
     .getByRole("button", { name: "선택 엑셀 출력", exact: true })
     .click();
-  await expect(page.locator("main").getByRole("alert")).toContainText(
-    "출력 대상 상태",
-  );
+  await page
+    .getByRole("button", { name: "확인 후 엑셀 출력", exact: true })
+    .click();
+  await expect(confirmation.getByRole("alert")).toContainText("출력 대상 상태");
+  await page.getByRole("button", { name: "돌아가기", exact: true }).click();
   await page.getByRole("button", { name: "새로고침", exact: true }).click();
   await expect(row(page, "발송수령인2")).toContainText("출력됨 · 발송 대기");
 });

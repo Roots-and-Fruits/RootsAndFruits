@@ -16,6 +16,8 @@ import { adminRequest } from "./client";
 import { ConfirmAction } from "./confirm-action";
 import { ExportHistory } from "./export-history";
 import { ShippingDelayAction } from "./shipping-delay-action";
+import { summarizeExport } from "./export-summary";
+import { ExportSummaryView } from "./export-summary-view";
 import { TrackingUpload } from "./tracking-upload";
 import { ShippingList } from "./order-lists";
 import type { Checkout } from "./schema";
@@ -53,6 +55,8 @@ export function ShippingWorkspace({
     row: ShippingRow;
     future: boolean;
   } | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
@@ -110,8 +114,9 @@ export function ShippingWorkspace({
     setError("");
   }
   async function exportSelected() {
+    if (disabled || !onlyWaiting || overLimit) return;
     setWorking(true);
-    setError("");
+    setExportError("");
     try {
       const key = "roots-and-fruits:export-request";
       let requestId = createRequestId();
@@ -134,9 +139,10 @@ export function ShippingWorkspace({
       Object.assign(document.createElement("a"), {
         href: `/api/admin/exports/${result.id}`,
       }).click();
+      setExportOpen(false);
       onExported();
     } catch (e) {
-      setError((e as Error).message);
+      setExportError((e as Error).message);
     } finally {
       setWorking(false);
     }
@@ -219,7 +225,10 @@ export function ShippingWorkspace({
         >
           <Button
             disabled={disabled || !onlyWaiting || overLimit}
-            onClick={exportSelected}
+            onClick={() => {
+              setExportError("");
+              setExportOpen(true);
+            }}
           >
             <FileSpreadsheet aria-hidden="true" />
             선택 엑셀 출력
@@ -238,6 +247,54 @@ export function ShippingWorkspace({
           />
         </div>
       </div>
+      <Dialog
+        open={exportOpen}
+        onOpenChange={(next) => {
+          if (!working) setExportOpen(next);
+        }}
+      >
+        <DialogContent
+          className="max-h-[85dvh] overflow-y-auto sm:max-w-xl"
+          showCloseButton={!working}
+        >
+          <DialogHeader>
+            <DialogTitle>엑셀 출력 전 준비 물량 확인</DialogTitle>
+            <DialogDescription>
+              선택한 배송지의 상품별 준비 물량을 확인해주세요. 아래 확인 버튼을
+              누르면 엑셀 파일을 생성하고 출력 완료로 처리합니다.
+            </DialogDescription>
+          </DialogHeader>
+          <ExportSummaryView
+            summary={summarizeExport(
+              chosen.map((r) => ({
+                category: r.checkout.category,
+                items: r.delivery.order_items,
+              })),
+            )}
+          />
+          {exportError && (
+            <p role="alert" className="text-sm text-destructive">
+              {exportError}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={working}
+              onClick={() => setExportOpen(false)}
+            >
+              돌아가기
+            </Button>
+            <Button
+              disabled={disabled || !onlyWaiting || overLimit}
+              onClick={exportSelected}
+            >
+              <FileSpreadsheet aria-hidden="true" />
+              {working ? "출력 처리 중…" : "확인 후 엑셀 출력"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {!!chosen.length && (
         <p role="status" className="text-sm font-semibold">
           배송지 {chosen.length}건 선택 · 출력 대기{" "}

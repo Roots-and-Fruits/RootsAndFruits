@@ -219,6 +219,9 @@ test("admin boundaries, product settings and real order lifecycle against isolat
   await page
     .getByRole("button", { name: "선택 엑셀 출력", exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "확인 후 엑셀 출력", exact: true })
+    .click();
   expect((await download).suggestedFilename()).toMatch(/\.xlsx$/);
   await expect(
     page.getByText("엑셀을 생성했습니다.", { exact: false }),

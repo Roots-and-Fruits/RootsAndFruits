@@ -1,3 +1,7 @@
+import {
+  summarizeExport,
+  type ExportSummarySource,
+} from "@/features/admin/export-summary";
 import { notificationRecipientAllowed } from "@/features/notifications/messages";
 import { addDays, dateInSeoul } from "@/features/orders/calculations";
 import { z } from "zod";
@@ -215,6 +219,52 @@ async function readAdmin(
       });
     }
     if (path[0] === "exports") {
+      if (path[1] && path[2] === "summary") {
+        const id = uuid.parse(path[1]);
+        const batch = await db
+          .from("export_batches")
+          .select("id")
+          .eq("id", id)
+          .single();
+        checkDb(batch.error);
+        const members = await db
+          .from("export_members")
+          .select(
+            "delivery_id,deliveries(order_items(product_id,label,weight_grams,quantity),checkouts(category))",
+            { count: "exact" },
+          )
+          .eq("batch_id", id)
+          .range(0, 999)
+          .returns<
+            {
+              delivery_id: string;
+              deliveries: {
+                order_items: ExportSummarySource["items"];
+                checkouts: { category: ExportSummarySource["category"] } | null;
+              } | null;
+            }[]
+          >();
+        checkDb(members.error);
+        if (
+          !members.data?.length ||
+          members.data.length !== members.count ||
+          members.data.some(
+            (m) =>
+              !m.deliveries?.checkouts || !m.deliveries.order_items?.length,
+          )
+        )
+          throw new HttpError(
+            "출력 묶음의 상품 정보를 모두 불러오지 못했습니다. 다시 시도해주세요.",
+            503,
+          );
+        const sources = members.data.map((m) => ({
+          category: m.deliveries!.checkouts!.category,
+          items: m.deliveries!.order_items,
+        })) as ExportSummarySource[];
+        return Response.json(summarizeExport(sources), {
+          headers: { "Cache-Control": "private, no-store" },
+        });
+      }
       if (path[1]) {
         const { data, error } = await timing.measure("db_export_file", () =>
           db
