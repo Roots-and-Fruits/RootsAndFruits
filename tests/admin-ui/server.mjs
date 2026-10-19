@@ -32,7 +32,9 @@ for (const file of [
   "202610110004_customer_deletion.sql",
   "202610160001_pos_receipt.sql",
   "202610190001_fruit_notices.sql",
+  "202610160002_shipping_tracking_notification.sql",
   "202610190002_shipping_delay_notifications.sql",
+  "202610200001_shipping_recipient_notifications.sql",
 ])
   await db.exec(
     await readFile(join(root, "supabase/migrations", file), "utf8"),

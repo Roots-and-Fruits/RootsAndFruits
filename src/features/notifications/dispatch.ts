@@ -1,4 +1,4 @@
-import type { NotificationJob } from "./messages";
+import { notificationRecipientAllowed, type NotificationJob } from "./messages";
 import {
   NotificationError,
   type NotificationProvider,
@@ -27,8 +27,8 @@ export async function dispatchNotifications(
     if (!jobs.length) break;
     const results = await Promise.allSettled(
       jobs.map(async (job) => {
-        // Covers recipient jobs queued before the sender-only SQL is applied.
-        if (job.recipient_role === "recipient") {
+        // Preserve the exclusion of historical recipient jobs.
+        if (!notificationRecipientAllowed(job)) {
           await store.finish(job, {
             status: "skipped",
             errorCode: "RECIPIENT_DISABLED",

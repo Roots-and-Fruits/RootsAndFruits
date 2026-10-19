@@ -100,3 +100,18 @@ export function aligoVariables(job: NotificationJob): Record<string, string> {
     송장번호: value.trackingNumbers.join("\n"),
   };
 }
+
+// The marker is written only by the new shipping trigger, never to historical jobs.
+export function notificationRecipientAllowed(job: {
+  event: string;
+  recipient_role?: string;
+  payload: unknown;
+}): boolean {
+  if (job.recipient_role !== "recipient") return true;
+  return (
+    job.event === "shipped" &&
+    z
+      .object({ recipientShippingEnabled: z.literal(true) })
+      .safeParse(job.payload).success
+  );
+}

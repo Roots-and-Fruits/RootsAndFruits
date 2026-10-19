@@ -1,3 +1,4 @@
+import { notificationRecipientAllowed } from "@/features/notifications/messages";
 import { addDays, dateInSeoul } from "@/features/orders/calculations";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
@@ -416,15 +417,17 @@ export async function POST(request: Request, context: Context) {
         const id = uuid.parse(body.id);
         const notification = await db
           .from("order_notifications")
-          .select("provider,recipient_role")
+          .select("provider,recipient_role,event,payload")
           .eq("id", id)
           .single();
         checkDb(notification.error);
         if (
           notification.data?.provider !== "aligo" ||
-          notification.data?.recipient_role === "recipient"
+          !notificationRecipientAllowed(notification.data!)
         )
-          throw new HttpError("보내는 분 대상 알림톡만 재시도할 수 있습니다.");
+          throw new HttpError(
+            "현재 발송 대상에 해당하는 알림톡만 재시도할 수 있습니다.",
+          );
         result = await db.rpc("retry_order_notification", {
           p_id: id,
           p_actor: staff.id,

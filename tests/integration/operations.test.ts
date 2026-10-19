@@ -2756,3 +2756,183 @@ test("Postgres: shipping snapshots all tracking numbers per delivery without bac
     await db.close();
   }
 });
+
+test("Postgres: new shipping sends to both phones, deduplicates same phone and preserves receipt/delay/history rules", async () => {
+  const db = await setup();
+  try {
+    for (const file of [
+      "202610160002_shipping_tracking_notification.sql",
+      "202610190002_shipping_delay_notifications.sql",
+      "202610200001_shipping_recipient_notifications.sql",
+    ])
+      await db.exec(await readFile(`supabase/migrations/${file}`, "utf8"));
+    await db.query(
+      "select configure_notification_delivery(true,'aligo',true,$1)",
+      [staff],
+    );
+    const d = delivery([{ productId: p2, quantity: 1 }]);
+    await db.query("select submit_checkout($1,$2::jsonb)", [
+      crypto.randomUUID(),
+      JSON.stringify(
+        payload([
+          d,
+          { ...d, recipient: { ...recipient, phone: "01099998888" } },
+        ]),
+      ),
+    ]);
+    const order = (await db.query<{ id: string }>("select id from checkouts"))
+      .rows[0].id;
+    const ids = (
+      await db.query<{ id: string }>(
+        "select id from deliveries order by position",
+      )
+    ).rows.map((r) => r.id);
+    const receipts = (
+      await db.query<NotificationJob>(
+        "select * from order_notifications where event='received'",
+      )
+    ).rows;
+    assert.equal(receipts.length, 1);
+    assert.equal(receipts[0].phone, sender.phone);
+    assert.equal(receipts[0].recipient_role, "sender");
+    await db.query("select change_checkout($1,'pay',$2,'cash')", [
+      order,
+      staff,
+    ]);
+    const preview = (
+      await db.query<{
+        v: { recipients: { phone: string; latestId: string | null }[] };
+      }>("select preview_shipping_delay($1,$2) v", [ids, staff])
+    ).rows[0].v;
+    await db.query("select queue_shipping_delay($1,$2,$3::jsonb,true,$4)", [
+      crypto.randomUUID(),
+      ids,
+      JSON.stringify(
+        preview.recipients.map(({ phone, latestId }) => ({ phone, latestId })),
+      ),
+      staff,
+    ]);
+    const delayed = (
+      await db.query<NotificationJob>(
+        "select * from order_notifications where event='delayed'",
+      )
+    ).rows;
+    assert.equal(delayed.length, 1);
+    assert.equal(delayed[0].phone, sender.phone);
+    assert.equal(delayed[0].recipient_role, "sender");
+    await db.query("select commit_export($1,$2,'test.xlsx','file',$3)", [
+      crypto.randomUUID(),
+      ids,
+      staff,
+    ]);
+    await db.query(
+      "insert into delivery_tracking_numbers(delivery_id,tracking_number,created_by) values($1,'001234567890',$2)",
+      [ids[1], staff],
+    );
+    await db.query("select mark_shipped($1,$2)", [ids, staff]);
+    await db.query("select mark_shipped($1,$2)", [ids, staff]);
+    const shipped = (
+      await db.query<NotificationJob & { delivery_id: string }>(
+        "select * from order_notifications where event='shipped'",
+      )
+    ).rows;
+    assert.equal(shipped.length, 3);
+    assert.equal(shipped.filter((j) => j.delivery_id === ids[0]).length, 1);
+    const toRecipient = shipped.find((j) => j.recipient_role === "recipient")!;
+    assert.equal(toRecipient.phone, "01099998888");
+    assert.equal(aligoVariables(toRecipient).송장번호, "001234567890");
+    assert.deepEqual(
+      aligoVariables(toRecipient),
+      aligoVariables(
+        shipped.find(
+          (j) => j.delivery_id === ids[1] && j.recipient_role === "sender",
+        )!,
+      ),
+    );
+    const claimed = (
+      await db.query<NotificationJob>(
+        "select * from claim_notification_delivery('aligo',true,10)",
+      )
+    ).rows;
+    assert.ok(claimed.some((j) => j.id === toRecipient.id));
+    assert.equal(
+      (
+        await db.query<{ ok: boolean }>(
+          "select prepare_order_notification($1,1,'aligo',true,'{\"text\":\"test\"}') ok",
+          [toRecipient.id],
+        )
+      ).rows[0].ok,
+      true,
+    );
+    await db.query(
+      "update order_notifications set status='failed' where id=$1",
+      [toRecipient.id],
+    );
+    await db.query("select retry_order_notification($1,$2)", [
+      toRecipient.id,
+      staff,
+    ]);
+    assert.equal(
+      (
+        await db.query<{ status: string }>(
+          "select status from order_notifications where id=$1",
+          [toRecipient.id],
+        )
+      ).rows[0].status,
+      "pending",
+    );
+    // A historical recipient row without the new trigger marker stays blocked.
+    await db.query(
+      "update order_notifications set payload=payload-'recipientShippingEnabled',status='failed' where id=$1",
+      [toRecipient.id],
+    );
+    await assert.rejects(
+      db.query("select retry_order_notification($1,$2)", [
+        toRecipient.id,
+        staff,
+      ]),
+      /이전 받는 분/,
+    );
+    await db.query(
+      "update order_notifications set status='sending' where id=$1",
+      [toRecipient.id],
+    );
+    assert.equal(
+      (
+        await db.query<{ ok: boolean }>(
+          "select prepare_order_notification($1,1,'aligo',true,'{\"text\":\"test\"}') ok",
+          [toRecipient.id],
+        )
+      ).rows[0].ok,
+      false,
+    );
+    await db.query(
+      "update order_notifications set status='pending' where id=$1",
+      [toRecipient.id],
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select * from claim_notification_delivery('aligo',true,10)",
+        )
+      ).rows.length,
+      0,
+    );
+    await db.exec(
+      await readFile(
+        "supabase/migrations/202610200001_shipping_recipient_notifications.sql",
+        "utf8",
+      ),
+    );
+    assert.equal(
+      (
+        await db.query(
+          "select * from order_notifications where event='shipped'",
+        )
+      ).rows.length,
+      3,
+    );
+  } finally {
+    await db.close();
+  }
+});

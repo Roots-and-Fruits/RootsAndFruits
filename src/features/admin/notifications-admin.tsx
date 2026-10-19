@@ -3,7 +3,10 @@ import { useEffect, useState } from "react";
 import { adminRequest } from "./client";
 import { AdminButton as Button } from "./admin-button";
 import { ConfirmAction } from "./confirm-action";
-import type { NotificationJob } from "@/features/notifications/messages";
+import {
+  notificationRecipientAllowed,
+  type NotificationJob,
+} from "@/features/notifications/messages";
 import {
   notificationErrorText,
   providerLabel,
@@ -131,7 +134,8 @@ export function NotificationsAdmin() {
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
-        주문 접수와 배송지별 발송 완료 안내는 모두 보내는 분에게만 전송합니다.
+        주문 접수·배송 지연 안내는 보내는 분에게만, 발송 완료 안내는 보내는 분과
+        받는 분에게 전송합니다. 같은 전화번호에는 배송지별 한 번만 전송합니다.
         서비스의 접수 완료는 실제 수신 완료와 다릅니다. 최종 수신 결과는 해당
         발송 서비스에서 확인해주세요.
       </p>
@@ -291,7 +295,7 @@ export function NotificationsAdmin() {
                 )}
                 {row.status === "failed" &&
                   row.provider === "aligo" &&
-                  row.recipient_role !== "recipient" && (
+                  notificationRecipientAllowed(row) && (
                     <div className="mt-3">
                       <ConfirmAction
                         label="재시도"

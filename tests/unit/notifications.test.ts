@@ -68,3 +68,40 @@ test("dispatcher sends only claimed jobs to sender, persists outcomes and leaves
     ].sort(),
   );
 });
+
+test("only newly authorized shipped recipient jobs pass dispatch; receipt and delay stay sender-only", async () => {
+  const sent: string[] = [];
+  const finished: unknown[] = [];
+  const jobs = ["shipped", "received", "delayed"].map((event) => ({
+    ...job,
+    id: event,
+    event: event as NotificationJob["event"],
+    recipient_role: "recipient" as const,
+    payload: { recipientShippingEnabled: true },
+  }));
+  await dispatchNotifications(
+    {
+      claim: async () => jobs,
+      prepare: async () => true,
+      finish: async (j, result) => {
+        finished.push([j.id, result.status]);
+      },
+    },
+    {
+      name: "aligo",
+      testMode: false,
+      prepare: () => ({ text: "가상 본문", subject: "발송 안내" }),
+      send: async (_phone, _message, id) => {
+        sent.push(id);
+        return { status: "accepted" };
+      },
+    },
+    0,
+  );
+  assert.deepEqual(sent, ["shipped"]);
+  assert.deepEqual(finished.sort(), [
+    ["delayed", "skipped"],
+    ["received", "skipped"],
+    ["shipped", "accepted"],
+  ]);
+});
