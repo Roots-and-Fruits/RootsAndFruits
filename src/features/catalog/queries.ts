@@ -11,6 +11,8 @@ const rowSchema = z.object({
   weight_grams: z.number().int().positive().nullable(),
   description: z.string(),
   price: z.number().int().nonnegative(),
+  special_discount_enabled: z.boolean(),
+  special_discount_amount: z.number().int().nonnegative(),
   inventory_enabled: z.boolean(),
   stock_quantity: z.number().int().nullable(),
   bundle_eligible: z.boolean(),
@@ -38,7 +40,7 @@ export async function getCatalog(
       supabase
         .from("products")
         .select(
-          "id, category, fruit_type, weight_grams, description, price, inventory_enabled, stock_quantity, bundle_eligible",
+          "id, category, fruit_type, weight_grams, description, price, special_discount_enabled, special_discount_amount, inventory_enabled, stock_quantity, bundle_eligible",
         )
         .eq("category", category)
         .eq("is_active", true)
@@ -71,6 +73,8 @@ export async function getCatalog(
       weightGrams: row.weight_grams,
       description: row.description,
       price: row.price,
+      specialDiscountEnabled: row.special_discount_enabled,
+      specialDiscountAmount: row.special_discount_amount,
       inventoryEnabled: row.inventory_enabled,
       stockQuantity: row.stock_quantity,
       bundleEligible: row.bundle_eligible,

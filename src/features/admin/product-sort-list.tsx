@@ -1,4 +1,5 @@
 "use client";
+import { ProductPrice } from "@/features/catalog/product-price";
 import {
   useEffect,
   useState,
@@ -26,7 +27,6 @@ import { FruitNoticeEditor, useFruitNotices } from "./fruit-notices";
 import { GripVertical } from "lucide-react";
 import { AdminButton as Button } from "./admin-button";
 import { adminProductLabel, type AdminProduct } from "./schema";
-import { formatWon } from "@/features/orders/calculations";
 
 type Group = { fruit: string; products: AdminProduct[] };
 export function groupProducts(products: AdminProduct[]): Group[] {
@@ -44,12 +44,14 @@ function SortableItem({
   children,
   group = false,
   headerContent,
+  afterContent,
 }: {
   id: string;
   label: string;
   disabled: boolean;
   group?: boolean;
   headerContent?: ReactNode;
+  afterContent?: ReactNode;
   children: ReactNode;
 }) {
   const {
@@ -103,6 +105,7 @@ function SortableItem({
           {children}
         </article>
       )}
+      {afterContent}
     </div>
   );
 }
@@ -166,6 +169,8 @@ export function ProductSortList({
   onSave,
   onReload,
   onEdit,
+  editingId,
+  editor,
 }: {
   category: AdminProduct["category"];
   products: AdminProduct[];
@@ -174,6 +179,8 @@ export function ProductSortList({
   onSave: (ids: string[]) => Promise<void>;
   onReload: () => Promise<void>;
   onEdit: (product: AdminProduct) => void;
+  editingId?: string;
+  editor?: ReactNode;
 }) {
   const experience = category === "experience";
   const { notices, error: noticeError } = useFruitNotices(!experience);
@@ -318,9 +325,14 @@ export function ProductSortList({
                     id={p.id!}
                     label={`${experience ? p.description : `${p.fruit_type} ${p.weight_grams! / 1000}kg ${p.description}`} 순서 이동`}
                     disabled={disabled || busy}
+                    afterContent={
+                      editingId === p.id ? (
+                        <div className="px-3 pb-4">{editor}</div>
+                      ) : null
+                    }
                   >
                     <div
-                      className={`grid min-w-0 flex-1 grid-cols-2 items-center gap-x-4 gap-y-2 text-sm ${experience ? "lg:grid-cols-[minmax(0,1fr)_7rem_5rem]" : "lg:grid-cols-[minmax(0,1fr)_7rem_5rem_8rem_7rem]"}`}
+                      className={`grid min-w-0 flex-1 grid-cols-2 items-center gap-x-4 gap-y-2 text-sm ${experience ? "lg:grid-cols-[minmax(0,1fr)_7rem_5rem]" : "lg:grid-cols-[minmax(0,1fr)_14rem_5rem_8rem_7rem]"}`}
                     >
                       <div className="col-span-2 min-w-0 lg:col-span-1">
                         <h3 className="break-words font-semibold">
@@ -334,9 +346,18 @@ export function ProductSortList({
                           </p>
                         )}
                       </div>
-                      <p className="font-medium tabular-nums">
-                        {formatWon(p.price)}
-                      </p>
+                      <div className="font-medium tabular-nums">
+                        <ProductPrice
+                          emphasize={false}
+                          price={p.price}
+                          discount={
+                            p.category === "product" &&
+                            p.special_discount_enabled
+                              ? (p.special_discount_amount ?? 0)
+                              : 0
+                          }
+                        />
+                      </div>
                       <p
                         className={
                           p.is_active ? "text-primary" : "text-muted-foreground"

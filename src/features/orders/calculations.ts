@@ -1,3 +1,4 @@
+import { sellingPrice } from "@/features/catalog/pricing";
 import type { Product } from "@/features/catalog/types";
 import type { DeliveryDraft, OrderLine } from "./schema";
 
@@ -6,7 +7,7 @@ export function calculateSubtotal(
   products: Product[],
 ): number {
   const prices = new Map(
-    products.map((product) => [product.id, product.price]),
+    products.map((product) => [product.id, sellingPrice(product)]),
   );
   return items.reduce((sum, item) => {
     const price = prices.get(item.productId);
@@ -100,7 +101,7 @@ export function calculateDeliveryAmounts(
     const p = eligible.get(item.productId);
     if (p) {
       count += item.quantity;
-      eligibleSubtotal += p.price * item.quantity;
+      eligibleSubtotal += sellingPrice(p) * item.quantity;
     }
   }
   const discount = Math.min(

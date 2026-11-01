@@ -8,6 +8,8 @@ export type Product = {
   weightGrams: number | null;
   description: string;
   price: number;
+  specialDiscountEnabled?: boolean;
+  specialDiscountAmount?: number;
   inventoryEnabled: boolean;
   stockQuantity: number | null;
   bundleEligible?: boolean;

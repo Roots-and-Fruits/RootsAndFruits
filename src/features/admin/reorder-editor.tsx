@@ -100,6 +100,8 @@ export function ReorderEditor({
       weightGrams: p.weight_grams,
       description: p.description,
       price: p.price,
+      specialDiscountEnabled: p.special_discount_enabled,
+      specialDiscountAmount: p.special_discount_amount,
       inventoryEnabled:
         p.inventory_enabled ||
         !p.is_active ||

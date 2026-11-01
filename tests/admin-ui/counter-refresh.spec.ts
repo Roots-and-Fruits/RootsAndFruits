@@ -355,3 +355,77 @@ test("counter distinguishes fully shipped orders from paid and partially shipped
   await page.goto("/namu-admin/orders");
   await expect(row(101)).toContainText("결제 완료 · 카드");
 });
+
+test("payment calculator preserves selection across searches and pages, sums saved discounts and resets on close", async ({
+  page,
+}, info) => {
+  const orders = Array.from({ length: 31 }, (_, i) => makeOrder(31 - i));
+  orders[0].subtotal = 14000;
+  orders[0].discount = 3000;
+  orders[0].total = 11000;
+  orders[0].deliveries[0].order_items[0].quantity = 2;
+  let calls = 0;
+  await page.route("**/api/admin/orders?*", (route) => {
+    calls++;
+    const params = new URL(route.request().url()).searchParams;
+    const matches = params.get("number")
+      ? orders.filter(
+          (order) => String(order.order_number) === params.get("number"),
+        )
+      : orders;
+    const offset = Number(params.get("page")) * 30;
+    return route.fulfill({
+      json: {
+        orders: matches.slice(offset, offset + 30),
+        count: matches.length,
+      },
+    });
+  });
+  await login(page);
+  await page
+    .getByRole("button", { name: "결제금액 합산", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "결제금액 합산",
+    exact: true,
+  });
+  await dialog
+    .getByRole("checkbox", { name: "31번 갱신고객31 선택", exact: true })
+    .check();
+  const baseline = calls;
+  await page.clock.fastForward(30000);
+  expect(calls).toBe(baseline);
+  await dialog.getByRole("button", { name: "다음", exact: true }).click();
+  await dialog
+    .getByRole("checkbox", { name: "1번 갱신고객1 선택", exact: true })
+    .check();
+  const result = dialog.getByRole("region", { name: "선택 주문 합산 결과" });
+  await expect(result).toContainText("선택한 주문 2건");
+  await expect(result).toContainText("18,000원");
+  await expect(result).toContainText("3개");
+  await dialog.getByLabel("주문번호", { exact: true }).fill("31");
+  await dialog.getByRole("button", { name: "검색", exact: true }).click();
+  await expect(
+    dialog.getByRole("checkbox", { name: "31번 갱신고객31 선택", exact: true }),
+  ).toBeChecked();
+  await expect(result).toContainText("18,000원");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath("payment-calculator.png"),
+    fullPage: true,
+  });
+  await result
+    .getByRole("button", { name: "31번 선택 해제", exact: true })
+    .click();
+  await expect(result).toContainText("선택한 주문 1건");
+  await expect(result).not.toContainText("18,000원");
+  await dialog.getByRole("button", { name: "닫기", exact: true }).click();
+  await page
+    .getByRole("button", { name: "결제금액 합산", exact: true })
+    .click();
+  await expect(result).toContainText("선택한 주문 0건");
+});

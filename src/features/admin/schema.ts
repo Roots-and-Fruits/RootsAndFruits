@@ -59,6 +59,8 @@ export const productFieldsSchema = z.object({
   weight_grams: z.number().int().positive().max(1000000).nullable(),
   description: z.string().trim().max(500),
   price: z.number().int().min(0).max(100000000),
+  special_discount_enabled: z.boolean().optional(),
+  special_discount_amount: z.number().int().min(0).max(100000000).optional(),
   is_active: z.boolean(),
   is_deleted: z.boolean(),
   inventory_enabled: z.boolean(),
@@ -69,6 +71,23 @@ export const productFieldsSchema = z.object({
 export const productSchema = productFieldsSchema.superRefine((product, ctx) => {
   const issue = (path: string, message: string) =>
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+  if (
+    product.special_discount_enabled &&
+    (!product.special_discount_amount ||
+      product.special_discount_amount > product.price)
+  )
+    issue(
+      "special_discount_amount",
+      "특별할인액은 1원 이상, 정상 가격 이하여야 합니다.",
+    );
+  if (
+    product.category === "experience" &&
+    (product.special_discount_enabled || product.special_discount_amount)
+  )
+    issue(
+      "special_discount_enabled",
+      "체험상품에는 특별할인을 적용하지 않습니다.",
+    );
   if (product.category === "product") {
     if (!product.fruit_type) issue("fruit_type", "과일 종류를 입력해주세요.");
     if (product.weight_grams === null)
@@ -105,6 +124,8 @@ export type SavedItem = {
   weight_grams: number | null;
   quantity: number;
   unit_price: number;
+  original_unit_price?: number | null;
+  special_discount_amount?: number;
   bundle_eligible: boolean;
 };
 export function savedItemLabel(

@@ -160,6 +160,9 @@ test("experience form, flat sorting, customer selection, order and category conv
     (r) => r.url().endsWith("/api/orders") && r.request().method() === "POST",
   );
   await page.getByRole("button", { name: "주문 접수", exact: true }).click();
+  await page
+    .getByRole("button", { name: "확인했어요 · 주문 접수", exact: true })
+    .click();
   const result = await (await response).json();
   expect(result.total).toBe(20000);
   await expect(page).toHaveURL(/order-complete/);

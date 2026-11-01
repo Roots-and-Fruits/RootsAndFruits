@@ -28,6 +28,8 @@ const productFormSchema = productFieldsSchema
   .superRefine((value, ctx) => {
     const result = productSchema.safeParse({
       ...value,
+      special_discount_enabled: value.special_discount_enabled ?? false,
+      special_discount_amount: value.special_discount_amount ?? 0,
       weight_grams:
         value.weight_kg === null ? null : Math.round(value.weight_kg * 1000),
     });
@@ -49,6 +51,8 @@ const emptyProduct: AdminProduct = {
   weight_grams: 3000,
   description: "",
   price: 0,
+  special_discount_enabled: false,
+  special_discount_amount: 0,
   is_active: true,
   is_deleted: false,
   inventory_enabled: false,
@@ -86,6 +90,20 @@ export function CatalogAdmin({ section }: { section: string }) {
       live = false;
     };
   }, [section]);
+  const editor = editing ? (
+    <ProductForm
+      key={editing.id ?? "new"}
+      value={editing}
+      onCancel={() => setEditing(null)}
+      onSave={async (value) => {
+        await adminRequest("products", value);
+        setEditing(null);
+        setCategory(value.category);
+        setNotice("상품을 저장했습니다.");
+        await load();
+      }}
+    />
+  ) : null;
   return (
     <div className="space-y-5">
       {error && (
@@ -145,20 +163,7 @@ export function CatalogAdmin({ section }: { section: string }) {
               상품 등록
             </Button>
           </div>
-          {editing && (
-            <ProductForm
-              key={editing.id ?? "new"}
-              value={editing}
-              onCancel={() => setEditing(null)}
-              onSave={async (value) => {
-                await adminRequest("products", value);
-                setEditing(null);
-                setCategory(value.category);
-                setNotice("상품을 저장했습니다.");
-                await load();
-              }}
-            />
-          )}
+          {editing && !editing.id && editor}
           <ProductSortList
             key={category + JSON.stringify(products)}
             products={products.filter(
@@ -166,6 +171,8 @@ export function CatalogAdmin({ section }: { section: string }) {
             )}
             category={category}
             disabled={!!editing}
+            editingId={editing?.id ?? undefined}
+            editor={editor}
             onDirtyChange={setSorting}
             onEdit={(p) => {
               setEditing(p);
@@ -211,6 +218,8 @@ function ProductForm({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       ...value,
+      special_discount_enabled: value.special_discount_enabled ?? false,
+      special_discount_amount: value.special_discount_amount ?? 0,
       // Older DB rows can still contain fields the experience form no longer shows.
       ...(value.category === "experience"
         ? { fruit_type: null, inventory_enabled: false, bundle_eligible: false }
@@ -261,6 +270,10 @@ function ProductForm({
             onChange={(event) => {
               const category = event.target.value as AdminProduct["category"];
               setValue("category", category);
+              if (category === "experience") {
+                setValue("special_discount_enabled", false);
+                setValue("special_discount_amount", 0);
+              }
               setValue("fruit_type", category === "experience" ? null : "");
               setValue("weight_kg", category === "experience" ? null : 3);
               setValue("inventory_enabled", false);
@@ -335,6 +348,56 @@ function ProductForm({
             </label>
           ))}
       </div>
+      {current.category === "product" && (
+        <div className="space-y-3 rounded-xl border border-orange-300 bg-orange-50 p-4">
+          <label className="flex items-center gap-2 font-semibold text-orange-900">
+            <Checkbox
+              checked={current.special_discount_enabled ?? false}
+              onCheckedChange={(checked) => {
+                if (
+                  checked !== true &&
+                  !Number.isFinite(current.special_discount_amount)
+                )
+                  setValue("special_discount_amount", 0);
+                setValue("special_discount_enabled", checked === true, {
+                  shouldValidate: true,
+                });
+              }}
+            />
+            특별할인
+          </label>
+          <p className="text-sm text-orange-900">
+            상품 1개당 할인액을 입력하세요. 묶음할인 대상이면 특별할인 적용 후
+            묶음할인도 함께 적용합니다.
+          </p>
+          {current.special_discount_enabled && (
+            <div className="max-w-md space-y-2">
+              <LabeledInput
+                id="special-discount"
+                label="1개당 특별할인액 (원)"
+                type="number"
+                min="1"
+                max={current.price}
+                {...register("special_discount_amount", {
+                  valueAsNumber: true,
+                })}
+                error={errors.special_discount_amount?.message}
+              />
+              <p className="font-semibold text-orange-900">
+                할인 판매가:{" "}
+                {Math.max(
+                  0,
+                  (Number.isFinite(current.price) ? current.price! : 0) -
+                    (Number.isFinite(current.special_discount_amount)
+                      ? current.special_discount_amount!
+                      : 0),
+                ).toLocaleString("ko-KR")}
+                원
+              </p>
+            </div>
+          )}
+        </div>
+      )}
       {current.category === "product" && current.inventory_enabled && (
         <div className="max-w-md space-y-2 rounded-lg bg-secondary/50 p-4">
           <LabeledInput

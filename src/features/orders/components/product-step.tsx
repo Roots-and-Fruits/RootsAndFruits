@@ -1,4 +1,6 @@
 "use client";
+import { ProductPrice } from "@/features/catalog/product-price";
+import { specialDiscount } from "@/features/catalog/pricing";
 
 import { Minus, Plus, PackageCheck, PackageOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -96,6 +98,7 @@ export function ProductStep({
               )}
               <div className="divide-y divide-border rounded-xl border border-border">
                 {group.map((product) => {
+                  const discount = specialDiscount(product);
                   const count =
                     items.find((item) => item.productId === product.id)
                       ?.quantity ?? 0;
@@ -103,7 +106,7 @@ export function ProductStep({
                   return (
                     <article
                       key={product.id}
-                      className={`flex flex-nowrap items-center justify-between gap-3 px-3 py-2.5 sm:px-4 ${unavailable ? "opacity-55" : ""}`}
+                      className={`flex flex-nowrap items-center justify-between gap-3 px-3 py-2.5 sm:px-4 ${discount ? "bg-gradient-to-r from-amber-100 to-orange-50 ring-2 ring-inset ring-red-400" : ""} ${unavailable ? "opacity-55" : ""}`}
                       aria-label={productLabel(product)}
                     >
                       <div className="min-w-0 flex-1 break-words">
@@ -125,9 +128,10 @@ export function ProductStep({
                           </p>
                         )}
                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span className="text-sm tabular-nums">
-                            {formatWon(product.price)}
-                          </span>
+                          <ProductPrice
+                            price={product.price}
+                            discount={discount}
+                          />
                           {!experience && product.bundleEligible && (
                             <Badge
                               variant="secondary"
@@ -141,7 +145,9 @@ export function ProductStep({
                       {unavailable ? (
                         <Badge variant="secondary">품절</Badge>
                       ) : (
-                        <div className="flex w-fit flex-none items-center rounded-full border border-border bg-background">
+                        <div
+                          className={`flex w-fit flex-none items-center rounded-full border border-border bg-background ${discount ? "border-red-300 shadow-sm" : ""}`}
+                        >
                           <Button
                             type="button"
                             variant="ghost"

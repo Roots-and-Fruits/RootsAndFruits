@@ -67,6 +67,11 @@ export function checkProductSave(
   error: { message: string; code?: string } | null,
   category: "product" | "experience",
 ) {
+  if (error && ["PGRST202", "42883"].includes(error.code ?? ""))
+    throw new HttpError(
+      "상품 특별할인 DB 업데이트가 필요합니다. 202610310001_special_discount.sql을 적용해주세요.",
+      503,
+    );
   if (
     category === "experience" &&
     error?.code === "23502" &&

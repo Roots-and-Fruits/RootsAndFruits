@@ -25,6 +25,7 @@ import { shippingRows } from "./shipping-work";
 import { OrderDetail } from "./order-detail";
 import { ReorderEditor } from "./reorder-editor";
 import { markAdminReady } from "./timing-client";
+import { PaymentCalculator } from "./payment-calculator";
 import { CounterRefreshButton } from "./counter-refresh-button";
 import { getPendingSubmission } from "@/features/orders/submission-storage";
 const filterLabels = [
@@ -35,6 +36,7 @@ const filterLabels = [
   ["processing", "출발 날짜"],
 ] as const;
 export function OrdersAdmin({ section }: { section: string }) {
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<{
     id: string;
     order_number: number;
@@ -139,6 +141,7 @@ export function OrdersAdmin({ section }: { section: string }) {
       detail ||
       reorder ||
       receiptOrder ||
+      calculatorOpen ||
       document.hidden
     )
       return;
@@ -334,7 +337,13 @@ export function OrdersAdmin({ section }: { section: string }) {
             </Button>
             {section === "counter" ? (
               <CounterRefreshButton
-                paused={!!detail || !!reorder || !!receiptOrder || busy}
+                paused={
+                  calculatorOpen ||
+                  !!detail ||
+                  !!reorder ||
+                  !!receiptOrder ||
+                  busy
+                }
                 refreshing={loading || refreshing}
                 onRefresh={refreshCounter}
               />
@@ -347,9 +356,17 @@ export function OrdersAdmin({ section }: { section: string }) {
         </form>
       )}
       {section !== "shipping" && (
-        <p className="text-xs text-muted-foreground">
-          최신 접수순 · 주문번호 내림차순
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            최신 접수순 · 주문번호 내림차순
+          </p>
+          {section === "counter" && (
+            <PaymentCalculator
+              open={calculatorOpen}
+              onOpenChange={setCalculatorOpen}
+            />
+          )}
+        </div>
       )}
       {loading && <p role="status">주문을 불러오는 중…</p>}
       {section === "shipping" ? (

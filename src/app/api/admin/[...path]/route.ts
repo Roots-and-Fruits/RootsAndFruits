@@ -523,7 +523,7 @@ export async function POST(request: Request, context: Context) {
       });
     } else if (path[0] === "products") {
       const { id, ...value } = productSchema.parse(body);
-      result = await db.rpc("save_product", {
+      result = await db.rpc("save_product_with_special_discount", {
         p_id: id,
         p_data: value,
         p_actor: staff.id,

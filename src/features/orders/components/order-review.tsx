@@ -1,4 +1,5 @@
 "use client";
+import { sellingPrice } from "@/features/catalog/pricing";
 
 import { OrderActionBar } from "./order-action-bar";
 import { SubmitOrder } from "./submit-order";
@@ -153,7 +154,7 @@ export function OrderReview({
                       </span>
                     </span>
                     <span className="shrink-0 tabular-nums">
-                      {formatWon(product.price * item.quantity)}
+                      {formatWon(sellingPrice(product) * item.quantity)}
                     </span>
                   </li>
                 );
